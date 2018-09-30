@@ -61,26 +61,23 @@
   scm-type-windowed-sinc SCM
   scm-rnrs-raise SCM)
 
-(define (scm->channel-data a result-channel-count result-sample-count result-channel-data)
-  (status-t SCM sp-channel-count-t* sp-sample-count-t* sp-sample-t***)
+(define (scm->channel-data a sample-count result-channel-count result-channel-data)
+  (status-t SCM sp-sample-count-t sp-channel-count-t* sp-sample-t***)
   "only the result array is allocated, data is referenced to the scm vectors.
   result is set to null if channel-data is empty"
   status-declare
   (declare
     channel-data sp-sample-t**
     channel-count sp-channel-count-t
-    sample-count sp-sample-count-t
     i sp-channel-count-t)
   (set channel-count (scm->sp-channel-count (scm-length a)))
   (if (not channel-count)
     (begin
       (set
         *result-channel-data 0
-        *result-channel-count 0
-        *result-sample-count 0)
+        *result-channel-count 0)
       (goto exit)))
-  (set sample-count (sp-octets->samples (SCM-BYTEVECTOR-LENGTH (scm-first a))))
-  (status-require (sp-alloc-channel-array channel-count sample-count &channel-data))
+  (status-require (sph-helper-calloc (* channel-count (sizeof sp-sample-t*)) &channel-data))
   (for
     ( (set i 0) (< i channel-count)
       (set
@@ -88,7 +85,9 @@
         a (scm-tail a)))
     (set (array-get channel-data i)
       (convert-type (SCM-BYTEVECTOR-CONTENTS (scm-first a)) sp-sample-t*)))
-  (set *result-channel-data channel-data)
+  (set
+    *result-channel-data channel-data
+    *result-channel-count channel-count)
   (label exit
     (return status)))
 

@@ -19,7 +19,7 @@ SCM scm_sp_port_close(SCM a) {
 };
 SCM scm_sp_port_set_position(SCM scm_port, SCM scm_sample_offset) {
   status_declare;
-  status = sp_port_set_position((scm_to_sp_port(scm_port)), (scm_to_int64(scm_sample_offset)));
+  status = sp_port_set_position((scm_to_sp_port(scm_port)), (scm_to_size_t(scm_sample_offset)));
   scm_from_status_return(SCM_UNSPECIFIED);
 };
 SCM scm_sp_convolve_x(SCM result, SCM a, SCM b, SCM carryover) {
@@ -107,7 +107,7 @@ SCM scm_sp_ifft(SCM scm_source) {
 exit:
   scm_from_status_return(scm_result);
 };
-SCM scm_sp_alsa_open(SCM scm_device_name, SCM scm_is_input, SCM scm_channel_count, SCM scm_sample_rate, SCM scm_latency) {
+SCM scm_sp_alsa_open(SCM scm_device_name, SCM scm_mode, SCM scm_channel_count, SCM scm_sample_rate, SCM scm_latency) {
   status_declare;
   uint8_t* device_name;
   SCM scm_result;
@@ -116,12 +116,12 @@ SCM scm_sp_alsa_open(SCM scm_device_name, SCM scm_is_input, SCM scm_channel_coun
   device_name = scm_to_locale_string(scm_device_name);
   scm_dynwind_free(device_name);
   port = scm_gc_malloc_pointerless((sizeof(sp_port_t)), "sp-port");
-  status_require((sp_alsa_open(device_name, (scm_to_bool(scm_is_input)), (scm_to_sp_channel_count(scm_channel_count)), (scm_to_sp_sample_rate(scm_sample_rate)), (scm_to_sp_sample_count(scm_latency)), port)));
+  status_require((sp_alsa_open(device_name, (scm_to_uint8(scm_mode)), (scm_to_sp_channel_count(scm_channel_count)), (scm_to_sp_sample_rate(scm_sample_rate)), (scm_to_sp_sample_count(scm_latency)), port)));
   scm_result = scm_from_sp_port(port);
 exit:
   scm_from_status_dynwind_end_return(scm_result);
 };
-SCM scm_sp_file_open(SCM scm_path, SCM scm_channel_count, SCM scm_sample_rate) {
+SCM scm_sp_file_open(SCM scm_path, SCM mode, SCM scm_channel_count, SCM scm_sample_rate) {
   status_declare;
   uint8_t* path;
   SCM scm_result;
@@ -130,7 +130,7 @@ SCM scm_sp_file_open(SCM scm_path, SCM scm_channel_count, SCM scm_sample_rate) {
   path = scm_to_locale_string(scm_path);
   scm_dynwind_free(path);
   port = scm_gc_malloc_pointerless((sizeof(sp_port_t)), "sp-port");
-  status_require((sp_file_open(path, (scm_to_sp_channel_count(scm_channel_count)), (scm_to_sp_sample_rate(scm_sample_rate)), port)));
+  status_require((sp_file_open(path, (scm_to_uint8(mode)), (scm_to_sp_channel_count(scm_channel_count)), (scm_to_sp_sample_rate(scm_sample_rate)), port)));
   scm_result = scm_from_sp_port(port);
 exit:
   scm_from_status_dynwind_end_return(scm_result);
@@ -164,24 +164,44 @@ SCM scm_sp_port_write(SCM scm_port, SCM scm_channel_data, SCM scm_sample_count) 
   sp_channel_count_t channel_count;
   sp_sample_count_t sample_count;
   channel_data = 0;
-  status_require((scm_to_channel_data(scm_channel_data, (&channel_count), (&sample_count), (&channel_data))));
-  status_require((sp_port_write((scm_to_sp_port(scm_port)), sample_count, channel_data)));
+  sample_count = scm_to_sp_sample_count(scm_sample_count);
+  status_require((scm_to_channel_data(scm_channel_data, sample_count, (&channel_count), (&channel_data))));
+  status_require((sp_port_write((scm_to_sp_port(scm_port)), channel_data, sample_count)));
+  scm_remember_upto_here_1(scm_channel_data);
 exit:
   if (channel_data) {
-    sp_channel_data_free(channel_data, channel_count);
+    free(channel_data);
   };
   scm_from_status_return(SCM_UNSPECIFIED);
 };
+SCM scm_sp_sample_format() {
+  if (sp_sample_format_f64 == sp_sample_format) {
+    return ((scm_from_latin1_symbol("f64")));
+  } else if (sp_sample_format_f32 == sp_sample_format) {
+    return ((scm_from_latin1_symbol("f32")));
+  } else if (sp_sample_format_int32 == sp_sample_format) {
+    return ((scm_from_latin1_symbol("int32")));
+  } else if (sp_sample_format_int16 == sp_sample_format) {
+    return ((scm_from_latin1_symbol("int16")));
+  } else if (sp_sample_format_int8 == sp_sample_format) {
+    return ((scm_from_latin1_symbol("int8")));
+  };
+};
 void sp_guile_init() {
-  debug_log("%lu", (sizeof(sp_sample_t)));
   SCM type_slots;
   SCM scm_symbol_data;
-  scm_c_define_procedure_c_init;
+  SCM m;
+  m = scm_c_resolve_module("sph sp");
   scm_rnrs_raise = scm_c_public_ref("rnrs exceptions", "raise");
   scm_symbol_data = scm_from_latin1_symbol("data");
   type_slots = scm_list_1(scm_symbol_data);
   scm_type_port = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-port")), type_slots, 0);
   scm_type_windowed_sinc = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-windowed-sinc")), type_slots, 0);
+  scm_c_module_define(m, "sp-sample-format", (scm_sp_sample_format(sp_sample_format)));
+  scm_c_module_define(m, "sp-port-mode-read", (scm_from_uint8(sp_port_mode_read)));
+  scm_c_module_define(m, "sp-port-mode-write", (scm_from_uint8(sp_port_mode_write)));
+  scm_c_module_define(m, "sp-port-mode-read-write", (scm_from_uint8(sp_port_mode_read_write)));
+  scm_c_define_procedure_c_init;
   scm_c_define_procedure_c("sp-sine!", 6, 0, 0, scm_sp_sine_x, ("data len sample-duration freq phase amp -> unspecified\n    sample-vector integer integer rational rational rational rational"));
   scm_c_define_procedure_c("sp-sine-lq!", 6, 0, 0, scm_sp_sine_lq_x, ("data len sample-duration freq phase amp  -> unspecified\n    sample-vector integer integer rational rational rational rational\n    faster, lower precision version of sp-sine!.\n    currently faster by a factor of about 2.6"));
   scm_c_define_procedure_c("sp-convolve!", 4, 0, 0, scm_sp_convolve_x, ("result a b carryover -> unspecified"));
@@ -190,8 +210,8 @@ void sp_guile_init() {
   scm_c_define_procedure_c("sp-moving-average!", 5, 2, 0, scm_sp_moving_average_x, ("result source previous next radius [start end] -> unspecified\n    sample-vector sample-vector sample-vector sample-vector integer integer integer [integer]"));
   scm_c_define_procedure_c("sp-fft", 1, 0, 0, scm_sp_fft, ("sample-vector:values-at-times -> sample-vector:frequencies\n    discrete fourier transform on the input data"));
   scm_c_define_procedure_c("sp-ifft", 1, 0, 0, scm_sp_ifft, ("sample-vector:frequencies -> sample-vector:values-at-times\n    inverse discrete fourier transform on the input data"));
-  scm_c_define_procedure_c("sp-alsa-open", 5, 0, 0, scm_sp_alsa_open, ("device-name is-input channel-count sample-rate latency -> sp-port"));
-  scm_c_define_procedure_c("sp-file-open", 3, 0, 0, scm_sp_file_open, ("path channel-count sample-rate -> sp-port"));
+  scm_c_define_procedure_c("sp-alsa-open", 5, 0, 0, scm_sp_alsa_open, ("device-name mode channel-count sample-rate latency -> sp-port"));
+  scm_c_define_procedure_c("sp-file-open", 4, 0, 0, scm_sp_file_open, ("path mode channel-count sample-rate -> sp-port"));
   scm_c_define_procedure_c("sp-port-close", 1, 0, 0, scm_sp_port_close, ("sp-port -> boolean"));
   scm_c_define_procedure_c("sp-port-input?", 1, 0, 0, scm_sp_port_input_p, ("sp-port -> boolean"));
   scm_c_define_procedure_c("sp-port-position?", 1, 0, 0, scm_sp_port_position_p, ("sp-port -> boolean"));
@@ -202,6 +222,6 @@ void sp_guile_init() {
   scm_c_define_procedure_c("f64vector-sum", 1, 2, 0, scm_f64vector_sum, ("f64vector [start end] -> number"));
   scm_c_define_procedure_c("f64-nearly-equal?", 3, 0, 0, scm_f64_nearly_equal_p, ("a b margin -> boolean\n    number number number -> boolean"));
   scm_c_define_procedure_c("sp-port-read", 2, 0, 0, scm_sp_port_read, ("sp-port integer:sample-count -> (sample-vector ...):channel-data"));
-  scm_c_define_procedure_c("sp-port-write", 2, 1, 0, scm_sp_port_write, ("sp-port (sample-vector ...):channel-data [integer:sample-count] -> boolean\n  write sample data to the channels of port"));
+  scm_c_define_procedure_c("sp-port-write", 2, 1, 0, scm_sp_port_write, ("sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified\n  write sample data to the channels of port"));
   scm_c_define_procedure_c("sp-port-set-position", 2, 0, 0, scm_sp_port_set_position, ("sp-port integer:sample-offset -> boolean\n    sample-offset can be negative, in which case it is from the end of the port"));
 };

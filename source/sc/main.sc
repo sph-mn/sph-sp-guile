@@ -27,7 +27,7 @@
 
 (define (scm-sp-port-set-position scm-port scm-sample-offset) (SCM SCM SCM)
   status-declare
-  (set status (sp-port-set-position (scm->sp-port scm-port) (scm->int64 scm-sample-offset)))
+  (set status (sp-port-set-position (scm->sp-port scm-port) (scm->size-t scm-sample-offset)))
   (scm-from-status-return SCM-UNSPECIFIED))
 
 (define (scm-sp-convolve! result a b carryover) (SCM SCM SCM SCM SCM)
@@ -173,8 +173,7 @@
   (label exit
     (scm-from-status-return scm-result)))
 
-(define
-  (scm-sp-alsa-open scm-device-name scm-is-input scm-channel-count scm-sample-rate scm-latency)
+(define (scm-sp-alsa-open scm-device-name scm-mode scm-channel-count scm-sample-rate scm-latency)
   (SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare
@@ -188,14 +187,14 @@
   (status-require
     (sp-alsa-open
       device-name
-      (scm->bool scm-is-input)
+      (scm->uint8 scm-mode)
       (scm->sp-channel-count scm-channel-count)
       (scm->sp-sample-rate scm-sample-rate) (scm->sp-sample-count scm-latency) port))
   (set scm-result (scm-from-sp-port port))
   (label exit
     (scm-from-status-dynwind-end-return scm-result)))
 
-(define (scm-sp-file-open scm-path scm-channel-count scm-sample-rate) (SCM SCM SCM SCM)
+(define (scm-sp-file-open scm-path mode scm-channel-count scm-sample-rate) (SCM SCM SCM SCM SCM)
   status-declare
   (declare
     path uint8-t*
@@ -207,7 +206,9 @@
   (set port (scm-gc-malloc-pointerless (sizeof sp-port-t) "sp-port"))
   (status-require
     (sp-file-open
-      path (scm->sp-channel-count scm-channel-count) (scm->sp-sample-rate scm-sample-rate) port))
+      path
+      (scm->uint8 mode)
+      (scm->sp-channel-count scm-channel-count) (scm->sp-sample-rate scm-sample-rate) port))
   (set scm-result (scm-from-sp-port port))
   (label exit
     (scm-from-status-dynwind-end-return scm-result)))
@@ -267,26 +268,42 @@
     channel-data sp-sample-t**
     channel-count sp-channel-count-t
     sample-count sp-sample-count-t)
-  (set channel-data 0)
-  (status-require (scm->channel-data scm-channel-data &channel-count &sample-count &channel-data))
-  (status-require (sp-port-write (scm->sp-port scm-port) sample-count channel-data))
+  (set
+    channel-data 0
+    sample-count (scm->sp-sample-count scm-sample-count))
+  (status-require (scm->channel-data scm-channel-data sample-count &channel-count &channel-data))
+  (status-require (sp-port-write (scm->sp-port scm-port) channel-data sample-count))
+  (scm-remember-upto-here-1 scm-channel-data)
   (label exit
-    (if channel-data (sp-channel-data-free channel-data channel-count))
+    (if channel-data (free channel-data))
     (scm-from-status-return SCM-UNSPECIFIED)))
 
+(define (scm-sp-sample-format) SCM
+  (case = sp-sample-format
+    (sp-sample-format-f64 (return (scm-from-latin1-symbol "f64")))
+    (sp-sample-format-f32 (return (scm-from-latin1-symbol "f32")))
+    (sp-sample-format-int32 (return (scm-from-latin1-symbol "int32")))
+    (sp-sample-format-int16 (return (scm-from-latin1-symbol "int16")))
+    (sp-sample-format-int8 (return (scm-from-latin1-symbol "int8")))))
+
 (define (sp-guile-init) void
-  (debug-log "%lu" (sizeof sp-sample-t))
   (declare
     type-slots SCM
-    scm-symbol-data SCM)
-  scm-c-define-procedure-c-init
+    scm-symbol-data SCM
+    m SCM)
   (set
+    m (scm-c-resolve-module "sph sp")
     scm-rnrs-raise (scm-c-public-ref "rnrs exceptions" "raise")
     scm-symbol-data (scm-from-latin1-symbol "data")
     type-slots (scm-list-1 scm-symbol-data)
     scm-type-port (scm-make-foreign-object-type (scm-from-latin1-symbol "sp-port") type-slots 0)
     scm-type-windowed-sinc
     (scm-make-foreign-object-type (scm-from-latin1-symbol "sp-windowed-sinc") type-slots 0))
+  (scm-c-module-define m "sp-sample-format" (scm-sp-sample-format sp-sample-format))
+  (scm-c-module-define m "sp-port-mode-read" (scm-from-uint8 sp-port-mode-read))
+  (scm-c-module-define m "sp-port-mode-write" (scm-from-uint8 sp-port-mode-write))
+  (scm-c-module-define m "sp-port-mode-read-write" (scm-from-uint8 sp-port-mode-read-write))
+  scm-c-define-procedure-c-init
   (scm-c-define-procedure-c
     "sp-sine!"
     6
@@ -349,9 +366,9 @@
     inverse discrete fourier transform on the input data")
   (scm-c-define-procedure-c
     "sp-alsa-open"
-    5 0 0 scm-sp-alsa-open "device-name is-input channel-count sample-rate latency -> sp-port")
+    5 0 0 scm-sp-alsa-open "device-name mode channel-count sample-rate latency -> sp-port")
   (scm-c-define-procedure-c
-    "sp-file-open" 3 0 0 scm-sp-file-open "path channel-count sample-rate -> sp-port")
+    "sp-file-open" 4 0 0 scm-sp-file-open "path mode channel-count sample-rate -> sp-port")
   (scm-c-define-procedure-c "sp-port-close" 1 0 0 scm-sp-port-close "sp-port -> boolean")
   (scm-c-define-procedure-c "sp-port-input?" 1 0 0 scm-sp-port-input? "sp-port -> boolean")
   (scm-c-define-procedure-c "sp-port-position?" 1 0 0 scm-sp-port-position? "sp-port -> boolean")
@@ -378,7 +395,7 @@
     1
     0
     scm-sp-port-write
-    "sp-port (sample-vector ...):channel-data [integer:sample-count] -> boolean
+    "sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified
   write sample data to the channels of port")
   (scm-c-define-procedure-c
     "sp-port-set-position"

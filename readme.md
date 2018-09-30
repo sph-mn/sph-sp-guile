@@ -125,7 +125,7 @@ sequencer usage example
 ```
 
 ## modules
-`(sph sp)`
+(sph sp)
 
 ```
 f32vector-sum :: f32vector [start end] -> number

@@ -1,16 +1,22 @@
 (library (sph sp)
   (export
     f32vector-sum
+    f64-nearly-equal?
     f64vector-sum
-    float-nearly-equal?
     sp-alsa-open
     sp-duration->sample-count
+    sp-fft
     sp-file-open
+    sp-ifft
+    sp-moving-average!
     sp-pi
     sp-plot-render
     sp-port-channel-count
     sp-port-close
     sp-port-input?
+    sp-port-mode-read
+    sp-port-mode-read-write
+    sp-port-mode-write
     sp-port-position
     sp-port-position?
     sp-port-read
@@ -19,20 +25,65 @@
     sp-port-write
     sp-port?
     sp-sample-count->duration
+    sp-sample-format
+    sp-samples->list
+    sp-samples-from-list
+    sp-samples-new
+    sp-samples?
     sp-segments->alsa
     sp-segments->file
     sp-segments->plot
     sp-segments->plot-render
     sp-sine!
-    sp-sine-lq!)
+    sp-sine-lq!
+    sp-windowed-sinc!
+    sp-windowed-sinc-state)
   (import
     (guile)
     (sph)
     (sph process)
-    (sph string))
+    (sph string)
+    (sph uniform-vector))
 
-  (load-extension "libguile-sph-sp" "sp_init_guile")
+  (load-extension "libguile-sph-sp" "sp_guile_init")
   (define sp-pi (* 4 (atan 1)))
+
+  (define-syntax-rule (sp-samples-new-f uv-create uv-make)
+    ; a procedure similar to vector-make except that the fill value can be a procedure used to set the elements
+    (l (length value) (if (procedure? value) (uv-create length value) (uv-make length value))))
+
+  (define sp-samples-new
+    (case sp-sample-format
+      ((f64) (sp-samples-new-f f64vector-create make-f64vector))
+      ((f32) (sp-samples-new-f f32vector-create make-f32vector))
+      ((int32) (sp-samples-new-f s32vector-create make-s32vector))
+      ((int16) (sp-samples-new-f s16vector-create make-s16vector))
+      ((int8) (sp-samples-new-f s8vector-create make-s8vector))))
+
+  (define sp-samples?
+    (case sp-sample-format
+      ((f64) f64vector?)
+      ((f32) f32vector?)
+      ((int32) s32vector?)
+      ((int16) s16vector?)
+      ((int8) s8vector?)))
+
+  (define sp-samples->list
+    (case sp-sample-format
+      ((f64) f64vector->list)
+      ((f32) f32vector->list)
+      ((int32) s32vector->list)
+      ((int16) s16vector->list)
+      ((int8) s8vector->list)))
+
+  (define sp-samples-from-list
+    (case sp-sample-format
+      ((f64) list->f64vector)
+      ((f32) list->f32vector)
+      ((int32) list->s32vector)
+      ((int16) list->s16vector)
+      ((int8) list->s8vector)))
+
   (define (sp-duration->sample-count seconds sample-rate) (* seconds sample-rate))
   (define (sp-sample-count->duration sample-count sample-rate) (/ sample-count sample-rate))
 
@@ -65,4 +116,9 @@
     (process-replace-p "gnuplot" "--persist"
       "-e" (string-append "set yrange [-1:1]; plot " (string-quote file-path) " with lines")))
 
-  (define (sp-segments->plot-render a path) (sp-segments->plot a path) (sp-plot-render path)))
+  (define (sp-segments->plot-render a path) (sp-segments->plot a path) (sp-plot-render path))
+
+  (define* (sp-moving-average source prev next distance #:optional start end)
+    "sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector"
+    (sp-samples-copy-empty* source
+      (l (a) (sp-moving-average! a source prev next distance start end)))))

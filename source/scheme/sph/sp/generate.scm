@@ -128,7 +128,7 @@
         returns a state object that is to be passed to sp-path to get a point on the path.
         there are no required segment types but at least one must be given.
         if no start is given then the path starts at 0. start can also be used as a path segment to create gaps.
-        similar to the path element of svg vector graphics.
+        this implementation is similar to the path element of svg vector graphics.
         for \"arc\" see how arcs are created with a path with svg graphics
         segment types:
           (start time value)

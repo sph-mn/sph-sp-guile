@@ -49,25 +49,23 @@ SCM scm_type_windowed_sinc;
 SCM scm_rnrs_raise;
 /** only the result array is allocated, data is referenced to the scm vectors.
   result is set to null if channel-data is empty */
-status_t scm_to_channel_data(SCM a, sp_channel_count_t* result_channel_count, sp_sample_count_t* result_sample_count, sp_sample_t*** result_channel_data) {
+status_t scm_to_channel_data(SCM a, sp_sample_count_t sample_count, sp_channel_count_t* result_channel_count, sp_sample_t*** result_channel_data) {
   status_declare;
   sp_sample_t** channel_data;
   sp_channel_count_t channel_count;
-  sp_sample_count_t sample_count;
   sp_channel_count_t i;
   channel_count = scm_to_sp_channel_count((scm_length(a)));
   if (!channel_count) {
     *result_channel_data = 0;
     *result_channel_count = 0;
-    *result_sample_count = 0;
     goto exit;
   };
-  sample_count = sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH((scm_first(a)))));
-  status_require((sp_alloc_channel_array(channel_count, sample_count, (&channel_data))));
+  status_require((sph_helper_calloc((channel_count * sizeof(sp_sample_t*)), (&channel_data))));
   for (i = 0; (i < channel_count); i = (1 + i), a = scm_tail(a)) {
     channel_data[i] = ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS((scm_first(a)))));
   };
   *result_channel_data = channel_data;
+  *result_channel_count = channel_count;
 exit:
   return (status);
 };
