@@ -1,0 +1,18 @@
+#!/bin/sh
+
+root="$PWD"
+s="source/sc"
+c="$root/source/c-precompiled"
+export SC_LOAD_PATH="$root/$s"
+
+compile_sc() {
+  # create the c source code
+  cd "$s" &&
+  find -type f -name "*.sc" -exec sc --parents '{}' "$c" \; &&
+  cd "$root" &&
+  find "$c" -type f -exec ./exe/format-c -i '{}' \; &&
+  mv "$c/sph/helper.c" "$c/sph/helper.h"
+}
+
+mkdir -p "$c" &&
+compile_sc

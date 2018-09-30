@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# usage: ./exe/install [path-prefix]
+
+prefix="$1"
+name=libguile-sph-sp.so
+source="temp/$name"
+target="$prefix/usr/lib"
+
+mkdir -p "$target" &&
+cp -t "$target" "$source" &&
+chmod 644 "$target/$name"
+
+target="$prefix/usr/share/guile/site"
+mkdir -p "$target" &&
+cp -rt "$target" "source/scheme/sph" "source/scheme/test" &&
+find "$target/sph" "$target/test" -type d -exec chmod 755 {} \; &&
+find "$target/sph" "$target/test" -type f -exec chmod 644 {} \;
