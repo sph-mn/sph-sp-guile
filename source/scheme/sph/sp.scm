@@ -5,9 +5,9 @@
     f64vector-sum
     sp-alsa-open
     sp-duration->sample-count
-    sp-fft
+    sp-fftr
+    sp-fftri
     sp-file-open
-    sp-ifft
     sp-moving-average!
     sp-pi
     sp-plot-render
@@ -21,7 +21,7 @@
     sp-port-position?
     sp-port-read
     sp-port-sample-rate
-    sp-port-set-position
+    sp-port-position-set
     sp-port-write
     sp-port?
     sp-sample-count->duration

@@ -40,11 +40,16 @@
       (return result))
     (return (scm-from-status-error status))))
 
+(enum (sp-status-id-missing-argument))
+
 (define (sp-guile-status-description a) (uint8-t* status-t)
   "get the description if available for a status"
   (declare b char*)
   (cond
-    ((not (strcmp status-group-sp-guile a.group)) (set b ""))
+    ( (not (strcmp status-group-sp-guile a.group))
+      (case = a.id
+        (sp-status-id-missing-argument (set b "missing argument"))
+        (else (set b ""))))
     (else (set b (sp-status-description a))))
   (return (convert-type b uint8-t*)))
 
@@ -52,7 +57,10 @@
   "get the name if available for a status"
   (declare b char*)
   (cond
-    ((not (strcmp status-group-sp-guile a.group)) (set b "unknown"))
+    ( (not (strcmp status-group-sp-guile a.group))
+      (case = a.id
+        (sp-status-id-missing-argument (set b "missing-argument"))
+        (else (set b "unknown"))))
     (else (set b (sp-status-name a))))
   (return (convert-type b uint8-t*)))
 

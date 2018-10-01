@@ -23,18 +23,19 @@
   (define-test (sp-file) (if (file-exists? test-env-file-path) (delete-file test-env-file-path))
     (let*
       ( (file-out (sp-file-open test-env-file-path sp-port-mode-write channel-count sample-rate))
-        (file-in (sp-file-open test-env-file-path sp-port-mode-read channel-count sample-rate))
         (data
           ; make data for channels filled with samples of value n
           (map-integers channel-count (l (n) (sp-samples-new segment-size (* (+ n 1) 0.1))))))
       (assert-and
-        (assert-equal "properties" (list #f #t 0)
-          (list (sp-port-input? file-out) (sp-port-input? file-in) (sp-port-position file-out)))
-        (assert-equal "reset position and write" segment-size
-          (begin (sp-port-set-position file-out 0) (sp-port-write file-out data segment-size)
-            (sp-port-position file-out)))
-        (assert-true "read" (equal? data (sp-port-read file-in 3)))
-        (assert-true "close" (and (sp-port-close file-in) (sp-port-close file-out))))))
+        (assert-equal "properties" (list #f 0)
+          (list (sp-port-input? file-out) (sp-port-position file-out)))
+        (assert-true "write"
+          (= segment-size (sp-port-write file-out data segment-size) (sp-port-position file-out)))
+        (assert-true "close" (and (sp-port-close file-out)))
+        (let*
+          ( (file-in (sp-file-open test-env-file-path sp-port-mode-read))
+            (test-result (assert-true "read" (equal? data (sp-port-read file-in segment-size)))))
+          (sp-port-close file-in) test-result))))
 
   (define-test (sp-alsa)
     (let (out (sp-alsa-open-output "default" channel-count sample-rate))
@@ -46,9 +47,9 @@
             (loop (+ 1 index) (+ segment-size sample-offset)))
           (sp-port-close out)))))
 
-  (define-test (sp-fft) (sp-samples? (sp-fft-inverse (sp-fft test-samples))))
+  (define-test (sp-fft) (sp-samples? (sp-fftri (sp-fftr test-samples))))
 
-  (define-test (sp-moving-average in ex)
+  #;(define-test (sp-moving-average in ex)
     (apply
       (l (source prev next distance . a)
         (let*
@@ -74,4 +75,6 @@
       ; no prev but next
       ((2 1 0 3) #f (5 9) 4)
       (1.2222222089767456 2.222222328186035 2.222222328186035 2.222222328186035))
-    sp-file sp-fft))
+    sp-file
+    sp-fft
+    ))

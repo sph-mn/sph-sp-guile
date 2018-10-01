@@ -24,11 +24,16 @@
   } else { \
     return ((scm_from_status_error(status))); \
   }
+enum { sp_status_id_missing_argument };
 /** get the description if available for a status */
 uint8_t* sp_guile_status_description(status_t a) {
   char* b;
   if (!strcmp(status_group_sp_guile, (a.group))) {
-    b = "";
+    if (sp_status_id_missing_argument == a.id) {
+      b = "missing argument";
+    } else {
+      b = "";
+    };
   } else {
     b = sp_status_description(a);
   };
@@ -38,7 +43,11 @@ uint8_t* sp_guile_status_description(status_t a) {
 uint8_t* sp_guile_status_name(status_t a) {
   char* b;
   if (!strcmp(status_group_sp_guile, (a.group))) {
-    b = "unknown";
+    if (sp_status_id_missing_argument == a.id) {
+      b = "missing-argument";
+    } else {
+      b = "unknown";
+    };
   } else {
     b = sp_status_name(a);
   };
