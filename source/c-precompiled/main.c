@@ -26,13 +26,13 @@ SCM scm_sp_convolve_x(SCM result, SCM a, SCM b, SCM carryover) {
   sp_sample_count_t a_len;
   sp_sample_count_t b_len;
   sp_sample_count_t c_len;
-  a_len = sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(a)));
-  b_len = sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(b)));
-  c_len = sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(b)));
+  a_len = scm_to_sp_samples_length(a);
+  b_len = scm_to_sp_samples_length(b);
+  c_len = scm_to_sp_samples_length(b);
   if (c_len < b_len) {
     scm_c_error(status_group_sp_guile, "invalid-argument-size", "carryover argument bytevector must be at least as large as the second argument bytevector");
   };
-  sp_convolve(((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(a))), a_len, ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(b))), b_len, c_len, ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(carryover))), ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(result))));
+  sp_convolve((scm_to_sp_samples(a)), a_len, (scm_to_sp_samples(b)), b_len, c_len, (scm_to_sp_samples(carryover)), (scm_to_sp_samples(result)));
   return (SCM_UNSPECIFIED);
 };
 SCM scm_sp_windowed_sinc_state_create(SCM scm_sample_rate, SCM scm_freq, SCM scm_transition, SCM scm_state) {
@@ -53,10 +53,14 @@ exit:
 SCM scm_sp_windowed_sinc_x(SCM scm_result, SCM scm_source, SCM scm_sample_rate, SCM scm_freq, SCM scm_transition, SCM scm_state) {
   status_declare;
   sp_windowed_sinc_state_t* state;
+  if (scm_is_undefined(scm_state)) {
+    scm_state = scm_sp_windowed_sinc_state_create(scm_sample_rate, scm_freq, scm_transition, scm_state);
+  };
   state = scm_to_sp_windowed_sinc(scm_state);
-  status = sp_windowed_sinc(((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_source))), (sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(scm_source)))), (scm_to_sp_sample_rate(scm_sample_rate)), (scm_to_sp_float(scm_freq)), (scm_to_sp_float(scm_transition)), (&state), ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_result))));
-  scm_from_status_return(SCM_UNSPECIFIED);
+  status = sp_windowed_sinc((scm_to_sp_samples(scm_source)), (scm_to_sp_samples_length(scm_source)), (scm_to_sp_sample_rate(scm_sample_rate)), (scm_to_sp_float(scm_freq)), (scm_to_sp_float(scm_transition)), (&state), (scm_to_sp_samples(scm_result)));
+  scm_from_status_return(scm_state);
 };
+/** start/end are indexes counted from 0 */
 SCM scm_sp_moving_average_x(SCM scm_result, SCM scm_source, SCM scm_prev, SCM scm_next, SCM scm_radius, SCM scm_start, SCM scm_end) {
   status_declare;
   sp_sample_count_t source_len;
@@ -66,24 +70,24 @@ SCM scm_sp_moving_average_x(SCM scm_result, SCM scm_source, SCM scm_prev, SCM sc
   sp_sample_t* next;
   sp_sample_count_t start;
   sp_sample_count_t end;
-  source_len = sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(scm_source)));
+  source_len = scm_to_sp_samples_length(scm_source);
   start = ((!scm_is_undefined(scm_start) && scm_is_true(scm_start)) ? scm_to_sp_sample_count(scm_start) : 0);
   end = ((!scm_is_undefined(scm_end) && scm_is_true(scm_end)) ? scm_to_sp_sample_count(scm_end) : (source_len - 1));
   if (scm_is_true(scm_prev)) {
-    prev = ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_prev)));
-    prev_len = sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(scm_prev)));
+    prev = scm_to_sp_samples(scm_prev);
+    prev_len = scm_to_sp_samples_length(scm_prev);
   } else {
     prev = 0;
     prev_len = 0;
   };
   if (scm_is_true(scm_next)) {
-    next = ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_next)));
-    next_len = sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(scm_next)));
+    next = scm_to_sp_samples(scm_next);
+    next_len = scm_to_sp_samples_length(scm_next);
   } else {
     next = 0;
     next_len = 0;
   };
-  status_require((sp_moving_average(((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_source))), source_len, prev, prev_len, next, next_len, (scm_to_sp_sample_count(scm_radius)), start, end, ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_result))))));
+  status_require((sp_moving_average((scm_to_sp_samples(scm_source)), source_len, prev, prev_len, next, next_len, (scm_to_sp_sample_count(scm_radius)), start, end, (scm_to_sp_samples(scm_result)))));
 exit:
   scm_from_status_return(SCM_UNSPECIFIED);
 };
@@ -91,9 +95,9 @@ SCM scm_sp_fftr(SCM scm_source) {
   status_declare;
   sp_sample_count_t result_len;
   SCM scm_result;
-  result_len = ((3 * SCM_BYTEVECTOR_LENGTH(scm_source)) / 2);
+  result_len = ((3 * scm_to_sp_samples_length(scm_source)) / 2);
   scm_result = scm_c_make_sp_samples(result_len);
-  status_require((sp_fftr(result_len, ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_source))), (SCM_BYTEVECTOR_LENGTH(scm_source)), ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_result))))));
+  status_require((sp_fftr(result_len, (scm_to_sp_samples(scm_source)), (scm_to_sp_samples_length(scm_source)), (scm_to_sp_samples(scm_result)))));
 exit:
   scm_from_status_return(scm_result);
 };
@@ -101,9 +105,9 @@ SCM scm_sp_fftri(SCM scm_source) {
   status_declare;
   sp_sample_count_t result_len;
   SCM scm_result;
-  result_len = ((SCM_BYTEVECTOR_LENGTH(scm_source) - 1) * 2);
+  result_len = ((scm_to_sp_samples_length(scm_source) - 1) * 2);
   scm_result = scm_c_make_sp_samples(result_len);
-  status_require((sp_fftri(result_len, ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_source))), (SCM_BYTEVECTOR_LENGTH(scm_source)), ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_result))))));
+  status_require((sp_fftri(result_len, (scm_to_sp_samples(scm_source)), (scm_to_sp_samples_length(scm_source)), (scm_to_sp_samples(scm_result)))));
 exit:
   scm_from_status_return(scm_result);
 };
@@ -135,8 +139,8 @@ SCM scm_sp_file_open(SCM scm_path, SCM mode, SCM scm_channel_count, SCM scm_samp
 exit:
   scm_from_status_dynwind_end_return(scm_result);
 };
-SCM scm_f64vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f64_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((f64*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? SCM_BYTEVECTOR_LENGTH(a) : (end - (1 + start))) * sizeof(f64))))))); };
-SCM scm_f32vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f32_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((f32*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? SCM_BYTEVECTOR_LENGTH(a) : (end - (1 + start))) * sizeof(f32))))))); };
+SCM scm_f64vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f64_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((f64*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? (SCM_BYTEVECTOR_LENGTH(a) / sizeof(f64)) : (end - (1 + start))) * sizeof(f64))))))); };
+SCM scm_f32vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f32_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((f32*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? (SCM_BYTEVECTOR_LENGTH(a) / sizeof(f32)) : (end - (1 + start))) * sizeof(f32))))))); };
 SCM scm_f64_nearly_equal_p(SCM a, SCM b, SCM margin) { return ((scm_from_bool((f64_nearly_equal((scm_to_double(a)), (scm_to_double(b)), (scm_to_double(margin))))))); };
 SCM scm_sp_port_read(SCM scm_port, SCM scm_sample_count) {
   status_declare;
@@ -215,7 +219,7 @@ void sp_guile_init() {
   scm_c_define_procedure_c("sp-sine!", 6, 0, 0, scm_sp_sine_x, ("data len sample-duration freq phase amp -> unspecified\n    sample-vector integer integer rational rational rational rational"));
   scm_c_define_procedure_c("sp-sine-lq!", 6, 0, 0, scm_sp_sine_lq_x, ("data len sample-duration freq phase amp  -> unspecified\n    sample-vector integer integer rational rational rational rational\n    faster, lower precision version of sp-sine!.\n    currently faster by a factor of about 2.6"));
   scm_c_define_procedure_c("sp-convolve!", 4, 0, 0, scm_sp_convolve_x, ("result a b carryover -> unspecified"));
-  scm_c_define_procedure_c("sp-windowed-sinc!", 7, 2, 0, scm_sp_windowed_sinc_x, ("result source previous next sample-rate freq transition [start end] -> unspecified\n    sample-vector sample-vector sample-vector sample-vector number number integer integer -> boolean"));
+  scm_c_define_procedure_c("sp-windowed-sinc!", 5, 1, 0, scm_sp_windowed_sinc_x, ("result source sample-rate freq transition state -> state\n    sample-vector sample-vector integer number number windowed-sinc-state -> unspecified\n    apply a windowed-sinc low-pass filter to source and write to result and return\n    an updated state object.\n    if no state object has been given, create a new state"));
   scm_c_define_procedure_c("sp-windowed-sinc-state", 3, 1, 0, scm_sp_windowed_sinc_state_create, ("sample-rate radian-frequency transition [state] -> state\n    rational rational rational [sp-windowed-sinc] -> sp-windowed-sinc"));
   scm_c_define_procedure_c("sp-moving-average!", 5, 2, 0, scm_sp_moving_average_x, ("result source previous next radius [start end] -> unspecified\n    sample-vector sample-vector sample-vector sample-vector integer integer integer [integer]"));
   scm_c_define_procedure_c("sp-fftr", 1, 0, 0, scm_sp_fftr, ("sample-vector:values-at-times -> sample-vector:frequencies\n    discrete fourier transform on the input data. only the real part"));

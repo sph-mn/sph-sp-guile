@@ -6,6 +6,8 @@
   (scm-from-sp-windowed-sinc pointer) (scm-make-foreign-object-1 scm-type-windowed-sinc pointer)
   (scm->sp-port a) (convert-type (scm-foreign-object-ref a 0) sp-port-t*)
   (scm->sp-windowed-sinc a) (convert-type (scm-foreign-object-ref a 0) sp-windowed-sinc-state-t*)
+  (scm->sp-samples a) (convert-type (SCM-BYTEVECTOR-CONTENTS a) sp-sample-t*)
+  (scm->sp-samples-length a) (sp-octets->samples (SCM-BYTEVECTOR-LENGTH a))
   (define-sp-sine! scm-id f)
   (begin
     "defines scm-sp-sine!, scm-sp-sine-lq!"
@@ -15,8 +17,7 @@
         (scm->sp-sample-count scm-len)
         (scm->sp-float scm-sample-duration)
         (scm->sp-float scm-freq)
-        (scm->sp-float scm-phase)
-        (scm->sp-float scm-amp) (convert-type (SCM-BYTEVECTOR-CONTENTS scm-data) sp-sample-t*))
+        (scm->sp-float scm-phase) (scm->sp-float scm-amp) (scm->sp-samples scm-data))
       (return SCM-UNSPECIFIED)))
   ; error handling
   (scm-from-status-error a)
@@ -91,8 +92,7 @@
       (set
         i (+ 1 i)
         a (scm-tail a)))
-    (set (array-get channel-data i)
-      (convert-type (SCM-BYTEVECTOR-CONTENTS (scm-first a)) sp-sample-t*)))
+    (set (array-get channel-data i) (scm->sp-samples (scm-first a))))
   (set
     *result-channel-data channel-data
     *result-channel-count channel-count)

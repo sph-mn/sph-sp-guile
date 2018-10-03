@@ -49,20 +49,26 @@
 
   (define-test (sp-fft) (sp-samples? (sp-fftri (sp-fftr test-samples))))
 
-  #;(define-test (sp-moving-average in ex)
+  (define-test (sp-moving-average in ex)
     (apply
       (l (source prev next distance . a)
         (let*
           ( (source (sp-samples-from-list source)) (prev (and prev (sp-samples-from-list prev)))
-            (next (and next (sp-samples-from-list next))) (result (f64vector-copy-empty source)))
-          (apply sp-moving-average! result source prev next distance a)
-          (debug-log sp-sample-format result)
-          (if (every (l (a b) (f64-nearly-equal? a b 1.0e-10)) ex (sp-samples->list result)) ex
+            (next (and next (sp-samples-from-list next)))
+            (result (apply sp-moving-average source prev next distance a)))
+          (if (every (l (a b) (f64-nearly-equal? a b 1.0e-6)) ex (sp-samples->list result)) ex
             result)))
       in))
 
-  (test-execute-procedures-lambda
-    #;(sp-moving-average
+  (define-test (sp-windowed-sinc in ex)
+    (list-bind in (source freq transition)
+      (let* ((source (sp-samples-from-list source)) (result (sp-samples-copy-zero source)))
+        (sp-windowed-sinc! result source sample-rate freq transition)
+        ; check of result data to be implemented
+        #t)))
+
+  (test-execute-procedures-lambda (sp-windowed-sinc ((2 2 2 2) 200 0.05) #t)
+    (sp-moving-average
       ; no prev/next
       ((2 2 2 2) #f #f 1) (1.3333333333333333 2.0 2.0 1.3333333333333333)
       ; no prev/next, bigger width
@@ -75,6 +81,4 @@
       ; no prev but next
       ((2 1 0 3) #f (5 9) 4)
       (1.2222222089767456 2.222222328186035 2.222222328186035 2.222222328186035))
-    sp-file
-    sp-fft
-    ))
+    sp-file sp-fft))

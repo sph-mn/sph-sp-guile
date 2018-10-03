@@ -8,6 +8,7 @@
     sp-fftr
     sp-fftri
     sp-file-open
+    sp-moving-average
     sp-moving-average!
     sp-pi
     sp-plot-render
@@ -18,16 +19,19 @@
     sp-port-mode-read-write
     sp-port-mode-write
     sp-port-position
+    sp-port-position-set
     sp-port-position?
     sp-port-read
     sp-port-sample-rate
-    sp-port-position-set
     sp-port-write
     sp-port?
     sp-sample-count->duration
     sp-sample-format
     sp-samples->list
+    sp-samples-copy-zero
+    sp-samples-copy-zero*
     sp-samples-from-list
+    sp-samples-length
     sp-samples-new
     sp-samples?
     sp-segments->alsa
@@ -40,6 +44,7 @@
     sp-windowed-sinc-state)
   (import
     (guile)
+    (rnrs bytevectors)
     (sph)
     (sph process)
     (sph string)
@@ -84,6 +89,30 @@
       ((int16) list->s16vector)
       ((int8) list->s8vector)))
 
+  (define sp-samples-copy-zero
+    (case sp-sample-format
+      ((f64) f64vector-copy-zero)
+      ((f32) f32vector-copy-zero)
+      ((int32) s32vector-copy-zero)
+      ((int16) s16vector-copy-zero)
+      ((int8) s8vector-copy-zero)))
+
+  (define sp-samples-copy-zero*
+    (case sp-sample-format
+      ((f64) f64vector-copy-zero*)
+      ((f32) f32vector-copy-zero*)
+      ((int32) s32vector-copy-zero*)
+      ((int16) s16vector-copy-zero*)
+      ((int8) s8vector-copy-zero*)))
+
+  (define sp-samples-length
+    (case sp-sample-format
+      ((f64) f64vector-length)
+      ((f32) f32vector-length)
+      ((int32) s32vector-length)
+      ((int16) s16vector-length)
+      ((int8) s8vector-length)))
+
   (define (sp-duration->sample-count seconds sample-rate) (* seconds sample-rate))
   (define (sp-sample-count->duration sample-count sample-rate) (/ sample-count sample-rate))
 
@@ -120,5 +149,5 @@
 
   (define* (sp-moving-average source prev next distance #:optional start end)
     "sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector"
-    (sp-samples-copy-empty* source
+    (sp-samples-copy-zero* source
       (l (a) (sp-moving-average! a source prev next distance start end)))))

@@ -8,10 +8,12 @@
 #define scm_from_sp_windowed_sinc(pointer) scm_make_foreign_object_1(scm_type_windowed_sinc, pointer)
 #define scm_to_sp_port(a) ((sp_port_t*)(scm_foreign_object_ref(a, 0)))
 #define scm_to_sp_windowed_sinc(a) ((sp_windowed_sinc_state_t*)(scm_foreign_object_ref(a, 0)))
+#define scm_to_sp_samples(a) ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(a)))
+#define scm_to_sp_samples_length(a) sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(a)))
 /** defines scm-sp-sine!, scm-sp-sine-lq! */
 #define define_sp_sine_x(scm_id, f) \
   SCM scm_id(SCM scm_data, SCM scm_len, SCM scm_sample_duration, SCM scm_freq, SCM scm_phase, SCM scm_amp) { \
-    f((scm_to_sp_sample_count(scm_len)), (scm_to_sp_float(scm_sample_duration)), (scm_to_sp_float(scm_freq)), (scm_to_sp_float(scm_phase)), (scm_to_sp_float(scm_amp)), ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(scm_data)))); \
+    f((scm_to_sp_sample_count(scm_len)), (scm_to_sp_float(scm_sample_duration)), (scm_to_sp_float(scm_freq)), (scm_to_sp_float(scm_phase)), (scm_to_sp_float(scm_amp)), (scm_to_sp_samples(scm_data))); \
     return (SCM_UNSPECIFIED); \
   }
 #define scm_from_status_error(a) scm_c_error((a.group), (sp_guile_status_name(a)), (sp_guile_status_description(a)))
@@ -71,7 +73,7 @@ status_t scm_to_channel_data(SCM a, sp_sample_count_t sample_count, sp_channel_c
   };
   status_require((sph_helper_calloc((channel_count * sizeof(sp_sample_t*)), (&channel_data))));
   for (i = 0; (i < channel_count); i = (1 + i), a = scm_tail(a)) {
-    channel_data[i] = ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS((scm_first(a)))));
+    channel_data[i] = scm_to_sp_samples((scm_first(a)));
   };
   *result_channel_data = channel_data;
   *result_channel_count = channel_count;

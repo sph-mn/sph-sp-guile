@@ -36,22 +36,17 @@
     b-len sp-sample-count-t
     c-len sp-sample-count-t)
   (set
-    a-len (sp-octets->samples (SCM-BYTEVECTOR-LENGTH a))
-    b-len (sp-octets->samples (SCM-BYTEVECTOR-LENGTH b))
-    c-len (sp-octets->samples (SCM-BYTEVECTOR-LENGTH b)))
+    a-len (scm->sp-samples-length a)
+    b-len (scm->sp-samples-length b)
+    c-len (scm->sp-samples-length b))
   (if (< c-len b-len)
     (scm-c-error
       status-group-sp-guile
       "invalid-argument-size"
       "carryover argument bytevector must be at least as large as the second argument bytevector"))
   (sp-convolve
-    (convert-type (SCM-BYTEVECTOR-CONTENTS a) sp-sample-t*)
-    a-len
-    (convert-type (SCM-BYTEVECTOR-CONTENTS b) sp-sample-t*)
-    b-len
-    c-len
-    (convert-type (SCM-BYTEVECTOR-CONTENTS carryover) sp-sample-t*)
-    (convert-type (SCM-BYTEVECTOR-CONTENTS result) sp-sample-t*))
+    (scm->sp-samples a)
+    a-len (scm->sp-samples b) b-len c-len (scm->sp-samples carryover) (scm->sp-samples result))
   (return SCM-UNSPECIFIED))
 
 (define (scm-sp-windowed-sinc-state-create scm-sample-rate scm-freq scm-transition scm-state)
@@ -78,21 +73,23 @@
   (SCM SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare state sp-windowed-sinc-state-t*)
+  (if (scm-is-undefined scm-state)
+    (set scm-state
+      (scm-sp-windowed-sinc-state-create scm-sample-rate scm-freq scm-transition scm-state)))
   (set
     state (scm->sp-windowed-sinc scm-state)
     status
     (sp-windowed-sinc
-      (convert-type (SCM-BYTEVECTOR-CONTENTS scm-source) sp-sample-t*)
-      (sp-octets->samples (SCM-BYTEVECTOR-LENGTH scm-source))
+      (scm->sp-samples scm-source)
+      (scm->sp-samples-length scm-source)
       (scm->sp-sample-rate scm-sample-rate)
-      (scm->sp-float scm-freq)
-      (scm->sp-float scm-transition)
-      &state (convert-type (SCM-BYTEVECTOR-CONTENTS scm-result) sp-sample-t*)))
-  (scm-from-status-return SCM-UNSPECIFIED))
+      (scm->sp-float scm-freq) (scm->sp-float scm-transition) &state (scm->sp-samples scm-result)))
+  (scm-from-status-return scm-state))
 
 (define
   (scm-sp-moving-average! scm-result scm-source scm-prev scm-next scm-radius scm-start scm-end)
   (SCM SCM SCM SCM SCM SCM SCM SCM)
+  "start/end are indexes counted from 0"
   status-declare
   (declare
     source-len sp-sample-count-t
@@ -103,7 +100,7 @@
     start sp-sample-count-t
     end sp-sample-count-t)
   (set
-    source-len (sp-octets->samples (SCM-BYTEVECTOR-LENGTH scm-source))
+    source-len (scm->sp-samples-length scm-source)
     start
     (if* (and (not (scm-is-undefined scm-start)) (scm-is-true scm-start))
       (scm->sp-sample-count scm-start)
@@ -114,28 +111,24 @@
       (- source-len 1)))
   (if (scm-is-true scm-prev)
     (set
-      prev (convert-type (SCM-BYTEVECTOR-CONTENTS scm-prev) sp-sample-t*)
-      prev-len (sp-octets->samples (SCM-BYTEVECTOR-LENGTH scm-prev)))
+      prev (scm->sp-samples scm-prev)
+      prev-len (scm->sp-samples-length scm-prev))
     (set
       prev 0
       prev-len 0))
   (if (scm-is-true scm-next)
     (set
-      next (convert-type (SCM-BYTEVECTOR-CONTENTS scm-next) sp-sample-t*)
-      next-len (sp-octets->samples (SCM-BYTEVECTOR-LENGTH scm-next)))
+      next (scm->sp-samples scm-next)
+      next-len (scm->sp-samples-length scm-next))
     (set
       next 0
       next-len 0))
   (status-require
     (sp-moving-average
-      (convert-type (SCM-BYTEVECTOR-CONTENTS scm-source) sp-sample-t*)
+      (scm->sp-samples scm-source)
       source-len
       prev
-      prev-len
-      next
-      next-len
-      (scm->sp-sample-count scm-radius)
-      start end (convert-type (SCM-BYTEVECTOR-CONTENTS scm-result) sp-sample-t*)))
+      prev-len next next-len (scm->sp-sample-count scm-radius) start end (scm->sp-samples scm-result)))
   (label exit
     (scm-from-status-return SCM-UNSPECIFIED)))
 
@@ -145,14 +138,12 @@
     result-len sp-sample-count-t
     scm-result SCM)
   (set
-    result-len (/ (* 3 (SCM-BYTEVECTOR-LENGTH scm-source)) 2)
+    result-len (/ (* 3 (scm->sp-samples-length scm-source)) 2)
     scm-result (scm-c-make-sp-samples result-len))
   (status-require
     (sp-fftr
       result-len
-      (convert-type (SCM-BYTEVECTOR-CONTENTS scm-source) sp-sample-t*)
-      (SCM-BYTEVECTOR-LENGTH scm-source)
-      (convert-type (SCM-BYTEVECTOR-CONTENTS scm-result) sp-sample-t*)))
+      (scm->sp-samples scm-source) (scm->sp-samples-length scm-source) (scm->sp-samples scm-result)))
   (label exit
     (scm-from-status-return scm-result)))
 
@@ -162,14 +153,12 @@
     result-len sp-sample-count-t
     scm-result SCM)
   (set
-    result-len (* (- (SCM-BYTEVECTOR-LENGTH scm-source) 1) 2)
+    result-len (* (- (scm->sp-samples-length scm-source) 1) 2)
     scm-result (scm-c-make-sp-samples result-len))
   (status-require
     (sp-fftri
       result-len
-      (convert-type (SCM-BYTEVECTOR-CONTENTS scm-source) sp-sample-t*)
-      (SCM-BYTEVECTOR-LENGTH scm-source)
-      (convert-type (SCM-BYTEVECTOR-CONTENTS scm-result) sp-sample-t*)))
+      (scm->sp-samples scm-source) (scm->sp-samples-length scm-source) (scm->sp-samples scm-result)))
   (label exit
     (scm-from-status-return scm-result)))
 
@@ -200,11 +189,6 @@
     path uint8-t*
     scm-result SCM
     port sp-port-t*)
-  #;(if
-    (and
-      (not (= sp-port-mode-read mode))
-      (or (scm-is-undefined scm-channel-count) (scm-is-undefined scm-sample-rate)))
-    (status-set-both-goto sp-status-group-sp sp-status-id-missing-argument))
   (scm-dynwind-begin 0)
   (set path (scm->locale-string scm-path))
   (scm-dynwind-free path)
@@ -231,7 +215,7 @@
             (scm->size-t start))
           (convert-type (SCM-BYTEVECTOR-CONTENTS a) f64*))
         (*
-          (if* (scm-is-undefined end) (SCM-BYTEVECTOR-LENGTH a)
+          (if* (scm-is-undefined end) (/ (SCM-BYTEVECTOR-LENGTH a) (sizeof f64))
             (- end (+ 1 start)))
           (sizeof f64))))))
 
@@ -244,7 +228,7 @@
             (scm->size-t start))
           (convert-type (SCM-BYTEVECTOR-CONTENTS a) f32*))
         (*
-          (if* (scm-is-undefined end) (SCM-BYTEVECTOR-LENGTH a)
+          (if* (scm-is-undefined end) (/ (SCM-BYTEVECTOR-LENGTH a) (sizeof f32))
             (- end (+ 1 start)))
           (sizeof f32))))))
 
@@ -346,12 +330,15 @@
     "sp-convolve!" 4 0 0 scm-sp-convolve! "result a b carryover -> unspecified")
   (scm-c-define-procedure-c
     "sp-windowed-sinc!"
-    7
-    2
+    5
+    1
     0
     scm-sp-windowed-sinc!
-    "result source previous next sample-rate freq transition [start end] -> unspecified
-    sample-vector sample-vector sample-vector sample-vector number number integer integer -> boolean")
+    "result source sample-rate freq transition state -> state
+    sample-vector sample-vector integer number number windowed-sinc-state -> unspecified
+    apply a windowed-sinc low-pass filter to source and write to result and return
+    an updated state object.
+    if no state object has been given, create a new state")
   (scm-c-define-procedure-c
     "sp-windowed-sinc-state"
     3
