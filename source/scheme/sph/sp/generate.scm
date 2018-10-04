@@ -11,6 +11,7 @@
     sp-sine)
   (import
     (guile)
+    (rnrs exceptions)
     (sph)
     (sph list)
     (sph math)
@@ -43,32 +44,45 @@
     (let loop ((index start) (states states))
       (if (< index end) (loop (+ 1 index) (apply f index states)) states)))
 
-  (define (sp-segment size f . states)
-    "integer procedure -> (vector . states)
-     create a new segment with values set by calling f for each sample"
-    (let (result (make-f64vector size))
-      (let loop ((index 0) (states states))
-        (if (< index size)
-          (let (states (apply f index states)) (f64vector-set! result index (first states))
-            (loop (+ 1 index) (tail states)))
-          (pair result states)))))
+  (define (sp-segment size channel-count f . states)
+    "integer integer false/procedure:{index states ... -> number/vector} -> (#(vector:channel ...) . states)
+     create a new segment with values set by calling f for each sample.
+     if the argument for f is false, return empty sample vectors"
+    (let (result (list->vector (map-integers channel-count (l a (sp-samples-new size 0)))))
+      (if f
+        (let loop ((index 0) (states states))
+          (if (< index size)
+            (let* ((data-and-states (apply f index states)) (data (first data-and-states)))
+              (cond
+                ((number? data) (sp-samples-set! (vector-first result) index data))
+                ( (vector? data)
+                  (vector-each-with-index
+                    (l (channel data) (sp-samples-set! (vector-ref result channel) index data)) data))
+                (else (raise (q sp-invalid-sample-f-result))))
+              (loop (+ 1 index) (tail data-and-states)))
+            (pair result states)))
+        (pair result states))))
 
   (define (sp-clip a) "eventually adjust value to not exceed -1 or 1"
     (if (< 0 a) (min 1.0 a) (max -1.0 a)))
 
-  (define (sp-generate sample-rate start duration segment-f sample-f . states)
-    "integer number number procedure procedure any ... -> (any ...):states
+  (define (sp-generate sample-rate channel-count start duration segment-f sample-f . states)
+    "integer integer integer procedure false/procedure any ... -> (any ...):states
+     calls segment-f for the samples of each second in duration. calls sample-f for each sample.
+     if sample-f is false then segment-f is called with new segment data set to zero.
      segment-f :: env time segment custom ... -> states
      sample-f :: env time custom ... -> sample-value"
-    (let* ((sample-duration (/ 1 sample-rate)) (env (vector sample-rate sample-duration)))
+    (let*
+      ((sample-duration (/ 1 sample-rate)) (env (vector sample-rate sample-duration channel-count)))
       (apply sp-fold-integers start
         (+ start duration)
         (l (time . states)
-          ; generate one segment per second
           (apply segment-f env
             time
             (apply sp-segment sample-rate
-              (l (index . states) (apply sample-f env (+ time (* index sample-duration)) states))
+              channel-count
+              (and sample-f
+                (l (index . states) (apply sample-f env (+ time (* index sample-duration)) states)))
               states)))
         states)))
 
@@ -143,7 +157,8 @@
               (first
                 (fold-multiple
                   (l (a result start)
-                    (case (first a) ((line) (line-new result start sample-duration (tail a)))
+                    (case (first a)
+                      ((line) (line-new result start sample-duration (tail a)))
                       ((bezier) (bezier-new result start sample-duration (tail a)))
                       ((arc) (arc-new result start sample-duration (tail a)))
                       ((start) (list result (apply vector (tail a))))))

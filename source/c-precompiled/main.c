@@ -178,7 +178,7 @@ SCM scm_sp_port_write(SCM scm_port, SCM scm_channel_data, SCM scm_sample_count) 
   SCM scm_result;
   channel_data = 0;
   sample_count = scm_to_sp_sample_count(scm_sample_count);
-  status_require((scm_to_channel_data(scm_channel_data, sample_count, (&channel_count), (&channel_data))));
+  status_require((scm_to_channel_data(scm_channel_data, (&channel_count), (&channel_data))));
   status_require((sp_port_write((scm_to_sp_port(scm_port)), channel_data, sample_count, (&result_sample_count))));
   scm_result = scm_from_sp_sample_count(result_sample_count);
   scm_remember_upto_here_1(scm_channel_data);
@@ -236,6 +236,6 @@ void sp_guile_init() {
   scm_c_define_procedure_c("f64vector-sum", 1, 2, 0, scm_f64vector_sum, ("f64vector [start end] -> number"));
   scm_c_define_procedure_c("f64-nearly-equal?", 3, 0, 0, scm_f64_nearly_equal_p, ("a b margin -> boolean\n    number number number -> boolean"));
   scm_c_define_procedure_c("sp-port-read", 2, 0, 0, scm_sp_port_read, ("sp-port integer:sample-count -> (sample-vector ...):channel-data"));
-  scm_c_define_procedure_c("sp-port-write", 2, 1, 0, scm_sp_port_write, ("sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified\n  write sample data to the channels of port"));
+  scm_c_define_procedure_c("sp-port-write", 3, 0, 0, scm_sp_port_write, ("sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified\n  write sample data to the channels of port"));
   scm_c_define_procedure_c("sp-port-position-set", 2, 0, 0, scm_sp_port_position_set, ("sp-port integer:sample-offset -> boolean\n    sample-offset can be negative, in which case it is from the end of the port"));
 };

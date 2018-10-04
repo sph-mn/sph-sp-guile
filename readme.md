@@ -80,49 +80,58 @@ installed files
   (sp-segments->alsa result-segments))
 ```
 
-sequencer usage example
+sequencer usage example (tested 2018-10-04). three sines with different frequencies that start 0.5 seconds apart and last 0.5 seconds. this example assumes gnuplot is installed to display a plot of the result.
 
 ```scheme
-(import (sph sp) (sph sp generate) (sph sp generate sequencer))
+(import (sph) (sph sp) (sph sp generate) (sph sp generate sequencer))
 
 (define (sound-a time state event duration custom)
-  (and (< duration 1) (seq-output (sp-sine time 100) state)))
+  "duration is time passed since the start of the event"
+  (and (< duration 0.5) (seq-output (* 0.25 (sp-sine time 100)) state)))
 
 (define (sound-b time state event duration custom)
-  (seq-output (* 0.5 (sp-sine time 200)) state (alist-q freq time)))
+  (and (< duration 0.5) (seq-output (* 0.5 (sp-sine time 200)) state)))
 
-(define (sound-c time state event duration custom) (seq-output (* 0.5 (sp-sine time 400)) state))
+(define (sound-c time state event duration custom)
+  (and (< duration 0.5) (seq-output (* 0.75 (sp-sine time 400)) state)))
 
 (define (events-f time end seq-state)
-  ; this returns a list of next event objects to register.
-  ; events-f is called every (seq-state-duration seq-state) seconds
-  ; this is so that not all events have to be created at once.
-  (list
-    (seq-event a sound-a 0)
-    (seq-event b sound-b 1)
-    (seq-event c sound-c 1.5)
-    (seq-event c sound-b (+ time 1))
-    (seq-event d sound-b (+ time 20))))
+  "this returns a list of next event objects to register.
+   events-f is called every (seq-state-duration seq-state) seconds.
+   this is so that not all events have to be created at once but can be returned near the time they
+   are starting"
+  (list (seq-event a sound-a 0) (seq-event b sound-b 0.5) (seq-event c sound-c 1)))
 
-(define (sample-f env time gen-result seq-state . custom)
-  ; this maps time to sample value in sp-generate
-  (seq time seq-state (l (data seq-state) (pairs data gen-result seq-state custom))))
+(define (sample-f env time result seq-state . custom)
+  "-> (#(number:sample-for-channel ...) list:generate-result seq-state any ...)
+   this maps time to sample value in sp-generate.
+   all parameters after time are for custom state values given to sp-generate"
+  (seq time seq-state (l (result-data seq-state)
+      (pairs result-data result seq-state custom))))
 
-(define (segment-f env time segment gen-result . custom)
-  ; this maps time and a sample array to a new sample array
-  ; the sample array was first processed by sample-f and can be empty
-  (pair (pair (list segment) gen-result) custom))
+(define (segment-f env time segment result . custom)
+  "-> #(vector:samples-for-channel ...)
+  this maps time and samples to a new samples vector.
+  the sample vector will have been processed by sample-f if sample-f was passed to sp-generate.
+  the env object passed to segment-f/sample-f is (vector sample-rate sample-duration channel-count)"
+  (pair (pair segment result) custom))
 
-(define (run)
+(define (run) "result-segments: (#(sample-vector:channel-samples ...) ...)"
   (let*
-    ( (seq-state (seq-state-new events-f))
+    ( (duration 3) (sample-rate 8000) (seq-state (seq-state-new events-f))
       (result-states
-        (sp-generate sample-rate 0 duration segment-f sample-f
+        (sp-generate sample-rate 1
+          0 duration segment-f sample-f
           ; custom state values
           null seq-state))
       (result-segments (reverse (first result-states))))
-    (sp-segments->alsa result-segments sample-rate "default" 4096)))
+    ;(sp-segments->file result-segments "/tmp/sp-example.wav" sample-rate)
+    (sp-segments->plot-render result-segments "/tmp/sp-plot" 0)))
+
+(run)
 ```
+
+sp-generate expects sample-f to return single sample numbers or vectors with one sample per channel
 
 ## modules
 (sph sp)

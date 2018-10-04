@@ -59,8 +59,8 @@ SCM scm_type_port;
 SCM scm_type_windowed_sinc;
 SCM scm_rnrs_raise;
 /** only the result array is allocated, data is referenced to the scm vectors.
-  result is set to null if channel-data is empty */
-status_t scm_to_channel_data(SCM a, sp_sample_count_t sample_count, sp_channel_count_t* result_channel_count, sp_sample_t*** result_channel_data) {
+  result is set to null if channel-data is empty. */
+status_t scm_to_channel_data(SCM a, sp_channel_count_t* result_channel_count, sp_sample_t*** result_channel_data) {
   status_declare;
   sp_sample_t** channel_data;
   sp_channel_count_t channel_count;

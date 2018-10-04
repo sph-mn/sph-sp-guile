@@ -15,11 +15,11 @@
     (seq-default-mixer
       ; default mixer should work with numbers and number lists
       ( (unquote
-          (list (seq-output-new (q noname) (list 0.02 0.02 0.03) #f #f)
-            (seq-output-new (q noname) (list 0.04 0.05 0.06) #f #f)
-            (seq-output-new (q noname) (list 0.07 0.08 0.09) #f #f))))
-      (0.13 0.15 0.18)
+          (list (seq-output-new (q noname) (vector 0.02 0.02 0.03) #f #f)
+            (seq-output-new (q noname) (vector 0.04 0.05 0.06) #f #f)
+            (seq-output-new (q noname) (vector 0.07 0.08 0.09) #f #f))))
+      #(0.13 0.15 0.18)
       ( (unquote
           (list (seq-output-new (q noname) 0.02 #f #f) (seq-output-new (q noname) 0.04 #f #f)
             (seq-output-new (q noname) 0.07 #f #f))))
-      (0.13))))
+      #(0.13))))

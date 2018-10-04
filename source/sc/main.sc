@@ -273,7 +273,7 @@
   (set
     channel-data 0
     sample-count (scm->sp-sample-count scm-sample-count))
-  (status-require (scm->channel-data scm-channel-data sample-count &channel-count &channel-data))
+  (status-require (scm->channel-data scm-channel-data &channel-count &channel-data))
   (status-require
     (sp-port-write (scm->sp-port scm-port) channel-data sample-count &result-sample-count))
   (set scm-result (scm-from-sp-sample-count result-sample-count))
@@ -398,8 +398,8 @@
     2 0 0 scm-sp-port-read "sp-port integer:sample-count -> (sample-vector ...):channel-data")
   (scm-c-define-procedure-c
     "sp-port-write"
-    2
-    1
+    3
+    0
     0
     scm-sp-port-write
     "sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified

@@ -70,10 +70,10 @@
   scm-type-windowed-sinc SCM
   scm-rnrs-raise SCM)
 
-(define (scm->channel-data a sample-count result-channel-count result-channel-data)
-  (status-t SCM sp-sample-count-t sp-channel-count-t* sp-sample-t***)
+(define (scm->channel-data a result-channel-count result-channel-data)
+  (status-t SCM sp-channel-count-t* sp-sample-t***)
   "only the result array is allocated, data is referenced to the scm vectors.
-  result is set to null if channel-data is empty"
+  result is set to null if channel-data is empty."
   status-declare
   (declare
     channel-data sp-sample-t**

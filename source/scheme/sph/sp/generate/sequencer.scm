@@ -82,13 +82,15 @@
        replaceable mixer function
        sample resolution for timings")
 
-  (define seq-index-data (vector-accessor 0))
-  (define seq-index-end (vector-accessor 1))
-  (define seq-index-events (vector-accessor 2))
-  (define seq-index-f (vector-accessor 3))
-  (define seq-index-i-f (vector-accessor 4))
-  (define seq-index-start (vector-accessor 5))
-  (define (seq-index-new data end events f i-f start) (vector data end events f i-f start))
+  (define seq-index-data (vector-accessor 1))
+  (define seq-index-end (vector-accessor 2))
+  (define seq-index-events (vector-accessor 3))
+  (define seq-index-f (vector-accessor 4))
+  (define seq-index-i-f (vector-accessor 5))
+  (define seq-index-start (vector-accessor 6))
+
+  (define (seq-index-new data end events f i-f start)
+    (vector (q seq-index) data end events f i-f start))
 
   (define* (seq-index-update a #:key data end events f i-f start)
     (vector (or data (seq-index-data a)) (or end (seq-index-end a))
@@ -122,9 +124,9 @@
       (letrec
         ( (index-f
             (l (time state) "number seq-state -> seq-index"
-              ; create an alist where the key is the target index and the value are events for this index.
-              ; then add empty entries for intermediate indexes, remove keys and create an index-data vector
-              ; and the index-events list for out-of-index events
+              "create an alist where the key is the target index and the value are events for this index.
+              then add empty entries for intermediate indexes, remove keys and create an index-data vector
+              and the index-events list for out-of-index events"
               (let*
                 ( (end (+ time duration)) (events-1 (events-f time end state))
                   (events-2
@@ -158,15 +160,15 @@
         index-f)))
 
   (define-as seq-state-options-default alist-q index-duration 4 index-size-factor 4)
-  (define seq-state-custom (vector-accessor 0))
-  (define seq-state-events-f (vector-accessor 1))
-  (define seq-state-events-custom (vector-accessor 2))
-  (define seq-state-index (vector-accessor 3))
-  (define seq-state-index-i (vector-accessor 4))
-  (define seq-state-input (vector-accessor 5))
-  (define seq-state-mixer (vector-accessor 6))
-  (define seq-state-options (vector-accessor 7))
-  (define seq-state-output (vector-accessor 8))
+  (define seq-state-custom (vector-accessor 1))
+  (define seq-state-events-f (vector-accessor 2))
+  (define seq-state-events-custom (vector-accessor 3))
+  (define seq-state-index (vector-accessor 4))
+  (define seq-state-index-i (vector-accessor 5))
+  (define seq-state-input (vector-accessor 6))
+  (define seq-state-mixer (vector-accessor 7))
+  (define seq-state-options (vector-accessor 8))
+  (define seq-state-output (vector-accessor 9))
 
   (define*
     (seq-state-new events-f #:key events-custom custom index index-i input mixer options output)
@@ -176,31 +178,31 @@
      index-f: -> (procedure:index-i-f . vector:index)
      custom: ((symbol . any) ...)
      event-f-list: list"
-    (vector (or custom null) events-f
-      (or events-custom null) index
-      (or index-i 0) (or input null)
-      (or mixer seq-default-mixer)
+    (vector (q seq-state) (or custom null)
+      events-f (or events-custom null)
+      index (or index-i 0)
+      (or input null) (or mixer seq-default-mixer)
       (or (and options (alist-merge seq-state-options-default options)) seq-state-options-default)
       (or output null)))
 
   (define*
     (seq-state-update a #:key custom events-f events-custom index index-i input mixer options
       output)
-    (vector (or custom (seq-state-custom a)) (or events-f (seq-state-events-f a))
-      (or events-custom (seq-state-events-custom a)) (or index (seq-state-index a))
-      (or index-i (seq-state-index-i a)) (or input (seq-state-input a))
-      (or mixer (seq-state-mixer a)) (or options (seq-state-options a))
-      (or output (seq-state-output a))))
+    (vector (q seq-state) (or custom (seq-state-custom a))
+      (or events-f (seq-state-events-f a)) (or events-custom (seq-state-events-custom a))
+      (or index (seq-state-index a)) (or index-i (seq-state-index-i a))
+      (or input (seq-state-input a)) (or mixer (seq-state-mixer a))
+      (or options (seq-state-options a)) (or output (seq-state-output a))))
 
-  (define seq-event-custom (vector-accessor 0))
-  (define seq-event-f (vector-accessor 1))
-  (define seq-event-groups (vector-accessor 2))
-  (define seq-event-name (vector-accessor 3))
-  (define seq-event-start (vector-accessor 4))
+  (define seq-event-custom (vector-accessor 1))
+  (define seq-event-f (vector-accessor 2))
+  (define seq-event-groups (vector-accessor 3))
+  (define seq-event-name (vector-accessor 4))
+  (define seq-event-start (vector-accessor 5))
 
   (define* (seq-event-new f #:optional name start custom groups)
     "procedure #:key integer (symbol ...) any -> vector"
-    (vector (or custom null) f groups (or name (q unnamed)) (or start 0)))
+    (vector (q seq-event) (or custom null) f groups (or name (q unnamed)) (or start 0)))
 
   (define-syntax-rule (seq-event name f optional ...) (seq-event-new f (q name) optional ...))
 
@@ -230,11 +232,11 @@
         (seq-state-update state #:input
           (seq-events-merge (seq-state-input state) soon) #:index (seq-index-add-events index later)))))
 
-  (define seq-output-name (vector-accessor 0))
-  (define seq-output-data (vector-accessor 1))
-  (define seq-output-custom (vector-accessor 2))
-  (define seq-output-event (vector-accessor 3))
-  (define* (seq-output-new name data custom event) (vector name data custom event))
+  (define seq-output-name (vector-accessor 1))
+  (define seq-output-data (vector-accessor 2))
+  (define seq-output-custom (vector-accessor 3))
+  (define seq-output-event (vector-accessor 4))
+  (define* (seq-output-new name data custom event) (vector (q seq-output) name data custom event))
 
   (define* (seq-output data state #:optional custom)
     "symbol integer/vector/any seq-state list list:alist -> list
@@ -242,9 +244,13 @@
     (pairs data state (or custom null)))
 
   (define (seq-default-mixer output)
-    "combines multiple event-f results into one seq result, which should be sample values.
-     does not handle arrays"
-    (map sp-clip (map-apply float-sum (apply zip (map (compose any->list seq-output-data) output)))))
+    "combines multiple event-f results, seq-output objects, into one seq result, which should be sample values.
+     sum the samples of each channel, clip and return a vector with one sample per channel"
+    (if (null? output) (vector)
+      (list->vector
+        (map sp-clip
+          (map-apply float-sum
+            (apply zip (map (compose vector->list any->vector seq-output-data) output)))))))
 
   (define seq
     (letrec
@@ -333,7 +339,9 @@
                     (loop (tail rest) state
                       (if (null? event-list) result-events (pair event-list result-events))
                       (append result-events-custom events-custom)))))))))
-      (l (time state c) "integer list -> integer/vector:sample-data list:state"
+      (l (time state c)
+        "integer list procedure:{results state -> any:seq-result} -> any:seq-result
+        the given procedure receives the results and the updated state and creates the final result of the call to seq"
         (or
           (and-let*
             ( (state (index-ensure time state)) (state (index-advance time state))
