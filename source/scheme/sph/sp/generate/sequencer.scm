@@ -27,60 +27,30 @@
     seq-output
     seq-output-new
     seq-state-add-events
-    seq-state-custom
-    seq-state-events-custom
+    seq-state-event-states
     seq-state-index
     seq-state-index-i
     seq-state-input
     seq-state-new
     seq-state-options
     seq-state-output
-    seq-state-update)
+    seq-state-update
+    seq-state-user-value)
   (import
     (guile)
     (sph)
     (sph alist)
     (sph list)
-    (sph list one)
+    (sph list other)
     (sph number)
-    (sph sp generate)
     (sph vector)
+    (only (sph sp generate) sp-clip)
     (only (srfi srfi-1) zip partition))
 
   (define sph-sp-generate-sequencer-description
-    "seq calls sample generating functions at customisable times, shares state values between event-f and
-     mixes output values to create a single result. seq emphasizes the \"when\", event-f the \"what\".
-     seq can return single sample values or sample arrays, this depends completely on the user supplied events-f and event-f functions,
-     as well as the time intervals seq is called.
-     data
-       event-f: a function that returns a sample or segment
-       event: a event-f and information when it should be called
-       index: a vector that stores lists of events for a time range
-       events: (event-list ...)
-       event-list: (event ...)
-       event-custom: the initial custom values for event-f
-       events-custom: ((event-name . output-custom) ...)
-     process
-       seq is called for each sample or segment with the time as argument. if no valid index is loaded,
-       events-f is called to get the next event-list.
-       seq checks all relevant event-f in index for if they need to be called now, eventually does it
-       and stores results with sample values and possibly custom values in an output structure that is
-       available to all subsequently called event-f for this seq call so that event-f can modulate other event-f.
-       event-f can be ordered and stored in priority groups
-       events contains multiple event-lists who are executed from left to right, for a simpler way to control execute-order priority.
-       events continue to be called until the associated event-f returns false
-     other
-       event-f have a dedicated state that they can update
-       event-f can add events
-       event-f states and output values are accessible to other event-f. for example for modulation
-       events are repeated indefinitely until the associated event-f returns false, so that the duration is easier to modulate
-       only a function to create a list of events needs to be supplied
-       events are indexed by time to reduce the amount of events that have to be checked
-       new events are automatically added to the index
-       purely functional
-       the default mixer sums all output values with rounding error compensation and clipping
-       replaceable mixer function
-       sample resolution for timings")
+    "seq calls sample generating functions at customisable times, shares state values between them and
+     mixes output values to create a single result. seq can return single sample values or sample arrays,
+     this depends completely on the user supplied events-f and event-f functions")
 
   (define seq-index-data (vector-accessor 1))
   (define seq-index-end (vector-accessor 2))
@@ -160,9 +130,9 @@
         index-f)))
 
   (define-as seq-state-options-default alist-q index-duration 4 index-size-factor 4)
-  (define seq-state-custom (vector-accessor 1))
+  (define seq-state-user-value (vector-accessor 1))
   (define seq-state-events-f (vector-accessor 2))
-  (define seq-state-events-custom (vector-accessor 3))
+  (define seq-state-event-states (vector-accessor 3))
   (define seq-state-index (vector-accessor 4))
   (define seq-state-index-i (vector-accessor 5))
   (define seq-state-input (vector-accessor 6))
@@ -171,44 +141,45 @@
   (define seq-state-output (vector-accessor 9))
 
   (define*
-    (seq-state-new events-f #:key events-custom custom index index-i input mixer options output)
-    "procedure [#:event-f-list list #:custom alist] -> seq-state
+    (seq-state-new events-f #:key event-states user-value index index-i input mixer options output)
+    "procedure [#:event-f-list list #:user-value alist] -> seq-state
      create a new state object.
-     seq-state: (results event-f-list index-i index index-f custom)
+     seq-state: (results event-f-list index-i index index-f user-value)
      index-f: -> (procedure:index-i-f . vector:index)
-     custom: ((symbol . any) ...)
+     user-value: ((symbol . any) ...)
      event-f-list: list"
-    (vector (q seq-state) (or custom null)
-      events-f (or events-custom null)
+    (vector (q seq-state) (or user-value null)
+      events-f (or event-states null)
       index (or index-i 0)
       (or input null) (or mixer seq-default-mixer)
       (or (and options (alist-merge seq-state-options-default options)) seq-state-options-default)
       (or output null)))
 
   (define*
-    (seq-state-update a #:key custom events-f events-custom index index-i input mixer options
+    (seq-state-update a #:key user-value events-f event-states index index-i input mixer options
       output)
-    (vector (q seq-state) (or custom (seq-state-custom a))
-      (or events-f (seq-state-events-f a)) (or events-custom (seq-state-events-custom a))
+    (vector (q seq-state) (or user-value (seq-state-user-value a))
+      (or events-f (seq-state-events-f a)) (or event-states (seq-state-event-states a))
       (or index (seq-state-index a)) (or index-i (seq-state-index-i a))
       (or input (seq-state-input a)) (or mixer (seq-state-mixer a))
       (or options (seq-state-options a)) (or output (seq-state-output a))))
 
-  (define seq-event-custom (vector-accessor 1))
+  (define seq-event-state (vector-accessor 1))
   (define seq-event-f (vector-accessor 2))
   (define seq-event-groups (vector-accessor 3))
   (define seq-event-name (vector-accessor 4))
   (define seq-event-start (vector-accessor 5))
 
-  (define* (seq-event-new f #:optional name start custom groups)
+  (define* (seq-event-new f #:optional name start event-state groups)
     "procedure #:key integer (symbol ...) any -> vector"
-    (vector (q seq-event) (or custom null) f groups (or name (q unnamed)) (or start 0)))
+    (vector (q seq-event) (or event-state null) f groups (or name (q unnamed)) (or start 0)))
 
   (define-syntax-rule (seq-event name f optional ...) (seq-event-new f (q name) optional ...))
 
-  (define* (seq-event-update a #:key f start name groups custom)
+  (define* (seq-event-update a #:key f start name groups event-state)
     (vector (or start (seq-event-start a)) (or f (seq-event-f a))
-      (or name (seq-event-name a)) (or groups (seq-event-groups a)) (or custom (seq-event-custom a))))
+      (or name (seq-event-name a)) (or groups (seq-event-groups a))
+      (or event-state (seq-event-state a))))
 
   (define (seq-event-list->events a) (if (null? a) a (if (vector? (first a)) (map list a) a)))
 
@@ -234,14 +205,16 @@
 
   (define seq-output-name (vector-accessor 1))
   (define seq-output-data (vector-accessor 2))
-  (define seq-output-custom (vector-accessor 3))
+  (define seq-output-event-state (vector-accessor 3))
   (define seq-output-event (vector-accessor 4))
-  (define* (seq-output-new name data custom event) (vector (q seq-output) name data custom event))
 
-  (define* (seq-output data state #:optional custom)
+  (define* (seq-output-new name data event-state event)
+    (vector (q seq-output) name data event-state event))
+
+  (define* (seq-output data state #:optional event-state)
     "symbol integer/vector/any seq-state list list:alist -> list
      create the output structure that event-f must return"
-    (pairs data state (or custom null)))
+    (pairs data state (or event-state null)))
 
   (define (seq-default-mixer output)
     "combines multiple event-f results, seq-output objects, into one seq result, which should be sample values.
@@ -294,16 +267,16 @@
                     (index-next time state)))))))
         (clear-output (l (state) (seq-state-update state #:output null)))
         (execute-event-list
-          (l (time state event-list events-custom c)
+          (l (time state event-list event-states c)
             "number seq-state event-list procedure:{state event-list -> any:result} -> any
             check every event for if it is due and eventually execute it, update state from its
             result and remove it from the event-list if its event-f returns false"
-            (if (null? event-list) (c state event-list events-custom)
+            (if (null? event-list) (c state event-list event-states)
               ; for each event in input event list
               (let loop
                 ( (state state) (rest event-list) (result-event-list null)
-                  (result-events-custom null))
-                (if (null? rest) (c state result-event-list result-events-custom)
+                  (result-event-states null))
+                (if (null? rest) (c state result-event-list result-event-states)
                   (let (event (first rest))
                     ; check if event is due
                     (if (<= (seq-event-start event) time)
@@ -312,33 +285,33 @@
                           (event-result
                             ( (seq-event-f event) time state
                               event (- time (seq-event-start event))
-                              (or (alist-ref events-custom event-name) (seq-event-custom event)))))
+                              (or (alist-ref event-states event-name) (seq-event-state event)))))
                         (if event-result
-                          (list-let event-result (data state . custom)
+                          (list-let event-result (data state . event-state)
                             (loop
                               (seq-state-update state #:output
-                                (pair (seq-output-new event-name data custom event)
+                                (pair (seq-output-new event-name data event-state event)
                                   (seq-state-output state)))
                               (tail rest) (pair event result-event-list)
-                              (pair (pair event-name custom) result-events-custom)))
-                          (loop state (tail rest) result-event-list result-events-custom)))
-                      (loop state (tail rest) (pair event result-event-list) result-events-custom))))))))
+                              (pair (pair event-name event-state) result-event-states)))
+                          (loop state (tail rest) result-event-list result-event-states)))
+                      (loop state (tail rest) (pair event result-event-list) result-event-states))))))))
         (execute-events
           (l (time state)
             "number seq-state -> seq-state
             execute event-lists, update state and eventually leave out empty result event-lists"
             (let loop
               ( (rest (seq-state-input state)) (state state) (result-events null)
-                (result-events-custom null))
+                (result-event-states null))
               (if (null? rest)
                 (seq-state-update state #:input
-                  (reverse result-events) #:events-custom result-events-custom)
+                  (reverse result-events) #:event-states result-event-states)
                 (execute-event-list time state
-                  (first rest) (seq-state-events-custom state)
-                  (l (state event-list events-custom)
+                  (first rest) (seq-state-event-states state)
+                  (l (state event-list event-states)
                     (loop (tail rest) state
                       (if (null? event-list) result-events (pair event-list result-events))
-                      (append result-events-custom events-custom)))))))))
+                      (append result-event-states event-states)))))))))
       (l (time state c)
         "integer list procedure:{results state -> any:seq-result} -> any:seq-result
         the given procedure receives the results and the updated state and creates the final result of the call to seq"
