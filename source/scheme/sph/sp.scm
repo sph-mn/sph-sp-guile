@@ -127,19 +127,23 @@
   (define (sp-sample-count->duration sample-count sample-rate) (/ sample-count sample-rate))
 
   (define (sp-segments->file a path sample-rate)
-    "((vector:segment ...):channel-data ...) string -> unspecified
+    "(#(#(sample ...):channel ...):segment ...) string -> unspecified
      write chunks of audio data to file. first argument is a list of lists of sample vectors per channel"
     (if (not (null? a))
-      (let (out (sp-file-open path sp-port-mode-write (length (first a)) sample-rate))
-        (vector-each (l (a) (sp-port-write out a (sp-samples-length (first a)))) a)
+      (let (out (sp-file-open path sp-port-mode-write (vector-length (first a)) sample-rate))
+        (each (l (segment) (sp-port-write out segment (sp-samples-length (vector-first segment))))
+          a)
         (sp-port-close out))))
 
   (define* (sp-segments->alsa a sample-rate #:optional (device "default") (latency 4096))
-    "((vector ...) ...) -> unspecified
+    "(#(vector:channel ...) ...) -> unspecified
      write chunks of audio data to an alsa device"
     (if (not (null? a))
-      (let (out (sp-alsa-open device #f (length (first a)) sample-rate latency))
-        (vector-each (l (a) (sp-port-write out a)) a) (sp-port-close out))))
+      (let
+        (out (sp-alsa-open device sp-port-mode-write (vector-length (first a)) sample-rate latency))
+        (each (l (segment) (sp-port-write out segment (sp-samples-length (vector-first segment))))
+          a)
+        (sp-port-close out))))
 
   (define (sp-segments->plot a path channel)
     "(#(vector:channel ...) ...) string ->

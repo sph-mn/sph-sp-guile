@@ -58,22 +58,23 @@ uint8_t* sp_guile_status_name(status_t a) {
 SCM scm_type_port;
 SCM scm_type_windowed_sinc;
 SCM scm_rnrs_raise;
-/** only the result array is allocated, data is referenced to the scm vectors.
+/** scm channel data: (#(sample ...):channel ...)
+  only the result array is allocated, data is referenced from the scm vectors.
   result is set to null if channel-data is empty. */
 status_t scm_to_channel_data(SCM a, sp_channel_count_t* result_channel_count, sp_sample_t*** result_channel_data) {
   status_declare;
   sp_sample_t** channel_data;
   sp_channel_count_t channel_count;
   sp_channel_count_t i;
-  channel_count = scm_to_sp_channel_count((scm_length(a)));
+  channel_count = scm_c_vector_length(a);
   if (!channel_count) {
     *result_channel_data = 0;
     *result_channel_count = 0;
     goto exit;
   };
   status_require((sph_helper_calloc((channel_count * sizeof(sp_sample_t*)), (&channel_data))));
-  for (i = 0; (i < channel_count); i = (1 + i), a = scm_tail(a)) {
-    channel_data[i] = scm_to_sp_samples((scm_first(a)));
+  for (i = 0; (i < channel_count); i = (1 + i)) {
+    channel_data[i] = scm_to_sp_samples((scm_c_vector_ref(a, i)));
   };
   *result_channel_data = channel_data;
   *result_channel_count = channel_count;
@@ -84,10 +85,10 @@ exit:
   eventually frees given data arrays */
 SCM scm_c_take_channel_data(sp_sample_t** a, sp_channel_count_t channel_count, sp_sample_count_t sample_count) {
   SCM scm_result;
-  scm_result = SCM_EOL;
+  scm_result = scm_c_make_vector(channel_count, SCM_BOOL_F);
   while (channel_count) {
     channel_count = (channel_count - 1);
-    scm_result = scm_cons((scm_c_take_samples((a[channel_count]), sample_count)), scm_result);
+    scm_c_vector_set_x(scm_result, channel_count, (scm_c_take_samples((a[channel_count]), sample_count)));
   };
   free(a);
   return (scm_result);

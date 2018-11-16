@@ -85,8 +85,8 @@
 
   (define (seq-index-f-new time state)
     "number seq-state -> procedure
-     create a procedure that returns new event indexes for a time and state using
-     the procedure events-f from the state to get events"
+     create a procedure that returns new event index for a time and state using
+     the procedure events-f from the state to get the events"
     (let*
       ( (options (seq-state-options state)) (duration (alist-ref-q options index-duration))
         (size (inexact->exact (round (* duration (alist-ref-q options index-size-factor)))))
