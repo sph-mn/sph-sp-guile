@@ -38,19 +38,20 @@
   (set
     a-len (scm->sp-samples-length a)
     b-len (scm->sp-samples-length b)
-    c-len (scm->sp-samples-length b))
-  (if (< c-len b-len)
+    c-len (scm->sp-samples-length carryover))
+  (if (< c-len (- b-len 1))
     (scm-c-error
       status-group-sp-guile
       "invalid-argument-size"
-      "carryover argument bytevector must be at least as large as the second argument bytevector"))
+      "carryover argument bytevector must be at least (- (length b) 1)"))
   (sp-convolve
     (scm->sp-samples a)
     a-len (scm->sp-samples b) b-len c-len (scm->sp-samples carryover) (scm->sp-samples result))
   (return SCM-UNSPECIFIED))
 
-(define (scm-sp-windowed-sinc-state-create scm-sample-rate scm-freq scm-transition scm-state)
-  (SCM SCM SCM SCM SCM)
+(define
+  (scm-sp-windowed-sinc-state-update scm-sample-rate scm-freq scm-transition is-high-pass scm-state)
+  (SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare
     state-null (struct-variable sp-windowed-sinc-state-t 0)
@@ -61,21 +62,32 @@
       state (scm-gc-malloc-pointerless (sizeof sp-windowed-sinc-state-t) "windowed-sinc-state")
       *state state-null))
   (status-require
-    (sp-windowed-sinc-state-create
+    (sp-windowed-sinc-state-update
       (scm->sp-sample-rate scm-sample-rate)
-      (scm->sp-float scm-freq) (scm->sp-float scm-transition) &state))
+      (scm->sp-float scm-freq)
+      (scm->sp-float scm-transition)
+      (if* (scm-is-true is-high-pass) sp-windowed-sinc-hp-ir
+        sp-windowed-sinc-ir)
+      &state))
   (set scm-state (scm-from-sp-windowed-sinc state))
   (label exit
     (scm-from-status-return scm-state)))
 
 (define
-  (scm-sp-windowed-sinc! scm-result scm-source scm-sample-rate scm-freq scm-transition scm-state)
-  (SCM SCM SCM SCM SCM SCM SCM)
+  (scm-sp-windowed-sinc!
+    scm-result scm-source scm-sample-rate scm-freq scm-transition scm-is-high-pass scm-state)
+  (SCM SCM SCM SCM SCM SCM SCM SCM)
   status-declare
-  (declare state sp-windowed-sinc-state-t*)
-  (if (scm-is-undefined scm-state)
+  (declare
+    state sp-windowed-sinc-state-t*
+    is-high-pass boolean)
+  (set is-high-pass
+    (if* (scm-is-undefined scm-is-high-pass) 0
+      (scm-is-true scm-is-high-pass)))
+  (if (or (not (scm-is-true scm-state)) (scm-is-undefined scm-state))
     (set scm-state
-      (scm-sp-windowed-sinc-state-create scm-sample-rate scm-freq scm-transition scm-state)))
+      (scm-sp-windowed-sinc-state-update
+        scm-sample-rate scm-freq scm-transition (scm-from-bool is-high-pass) scm-state)))
   (set
     state (scm->sp-windowed-sinc scm-state)
     status
@@ -83,7 +95,8 @@
       (scm->sp-samples scm-source)
       (scm->sp-samples-length scm-source)
       (scm->sp-sample-rate scm-sample-rate)
-      (scm->sp-float scm-freq) (scm->sp-float scm-transition) &state (scm->sp-samples scm-result)))
+      (scm->sp-float scm-freq)
+      (scm->sp-float scm-transition) is-high-pass &state (scm->sp-samples scm-result)))
   (scm-from-status-return scm-state))
 
 (define
@@ -132,35 +145,33 @@
   (label exit
     (scm-from-status-return SCM-UNSPECIFIED)))
 
-(define (scm-sp-fftr scm-source) (SCM SCM)
+(define (scm-sp-fftr scm-input) (SCM SCM)
   status-declare
   (declare
-    result-len sp-sample-count-t
-    scm-result SCM)
+    input-len sp-sample-count-t
+    output-len sp-sample-count-t
+    scm-output SCM)
   (set
-    result-len (/ (* 3 (scm->sp-samples-length scm-source)) 2)
-    scm-result (scm-c-make-sp-samples result-len))
-  (status-require
-    (sp-fftr
-      result-len
-      (scm->sp-samples scm-source) (scm->sp-samples-length scm-source) (scm->sp-samples scm-result)))
+    input-len (scm->sp-samples-length scm-input)
+    output-len (* 2 (sp-fftr-output-len input-len))
+    scm-output (scm-c-make-sp-samples output-len))
+  (status-require (sp-fftr (scm->sp-samples scm-input) input-len (scm->sp-samples scm-output)))
   (label exit
-    (scm-from-status-return scm-result)))
+    (scm-from-status-return scm-output)))
 
-(define (scm-sp-fftri scm-source) (SCM SCM)
+(define (scm-sp-fftri scm-input) (SCM SCM)
   status-declare
   (declare
-    result-len sp-sample-count-t
-    scm-result SCM)
+    output-len sp-sample-count-t
+    scm-output SCM)
   (set
-    result-len (* (- (scm->sp-samples-length scm-source) 1) 2)
-    scm-result (scm-c-make-sp-samples result-len))
+    output-len (sp-fftri-output-len (scm->sp-samples-length scm-input))
+    scm-output (scm-c-make-sp-samples output-len))
   (status-require
     (sp-fftri
-      result-len
-      (scm->sp-samples scm-source) (scm->sp-samples-length scm-source) (scm->sp-samples scm-result)))
+      (scm->sp-samples scm-input) (scm->sp-samples-length scm-input) (scm->sp-samples scm-output)))
   (label exit
-    (scm-from-status-return scm-result)))
+    (scm-from-status-return scm-output)))
 
 (define (scm-sp-alsa-open scm-device-name scm-mode scm-channel-count scm-sample-rate scm-latency)
   (SCM SCM SCM SCM SCM SCM)
@@ -282,6 +293,12 @@
     (if channel-data (free channel-data))
     (scm-from-status-return scm-result)))
 
+(define (scm-sp-window-blackman a width) (SCM SCM SCM)
+  (scm-from-sp-float (sp-window-blackman (scm->sp-float a) (scm->sp-sample-count width))))
+
+; windowed-sinc-ir
+; windowed-sinc-hp-ir
+
 (define (scm-sp-sample-format) SCM
   (case = sp-sample-format
     (sp-sample-format-f64 (return (scm-from-latin1-symbol "f64")))
@@ -328,24 +345,25 @@
     currently faster by a factor of about 2.6")
   (scm-c-define-procedure-c
     "sp-convolve!" 4 0 0 scm-sp-convolve! "result a b carryover -> unspecified")
+  (scm-c-define-procedure-c "sp-window-blackman" 2 0 0 scm-sp-window-blackman "real width -> real")
   (scm-c-define-procedure-c
     "sp-windowed-sinc!"
     5
-    1
+    2
     0
     scm-sp-windowed-sinc!
-    "result source sample-rate freq transition state -> state
+    "result source sample-rate freq transition is-high-pass state -> state
     sample-vector sample-vector integer number number windowed-sinc-state -> unspecified
     apply a windowed-sinc low-pass filter to source and write to result and return
     an updated state object.
     if no state object has been given, create a new state")
   (scm-c-define-procedure-c
-    "sp-windowed-sinc-state"
-    3
+    "sp-windowed-sinc-state-update"
+    4
     1
     0
-    scm-sp-windowed-sinc-state-create
-    "sample-rate radian-frequency transition [state] -> state
+    scm-sp-windowed-sinc-state-update
+    "sample-rate radian-frequency transition is-high-pass [state] -> state
     rational rational rational [sp-windowed-sinc] -> sp-windowed-sinc")
   (scm-c-define-procedure-c
     "sp-moving-average!"

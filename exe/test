@@ -5,7 +5,7 @@
 
 (define settings
   (test-settings-default-custom
-    ;only (q ((test module sph sp)))
+    only (q ((test module sph sp)))
     ;only (q ((test module sph sp generate sequencer)))
     path-search "source/scheme" reporter-name (q compact)))
 

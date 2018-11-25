@@ -72,9 +72,9 @@
 
 (define (scm->channel-data a result-channel-count result-channel-data)
   (status-t SCM sp-channel-count-t* sp-sample-t***)
-  "scm channel data: (#(sample ...):channel ...)
+  "scm channel data: #(#(sample ...):channel ...)
   only the result array is allocated, data is referenced from the scm vectors.
-  result is set to null if channel-data is empty."
+  result is set to null if channel-data is empty"
   status-declare
   (declare
     channel-data sp-sample-t**

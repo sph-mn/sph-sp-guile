@@ -58,9 +58,9 @@ uint8_t* sp_guile_status_name(status_t a) {
 SCM scm_type_port;
 SCM scm_type_windowed_sinc;
 SCM scm_rnrs_raise;
-/** scm channel data: (#(sample ...):channel ...)
+/** scm channel data: #(#(sample ...):channel ...)
   only the result array is allocated, data is referenced from the scm vectors.
-  result is set to null if channel-data is empty. */
+  result is set to null if channel-data is empty */
 status_t scm_to_channel_data(SCM a, sp_channel_count_t* result_channel_count, sp_sample_t*** result_channel_data) {
   status_declare;
   sp_sample_t** channel_data;
