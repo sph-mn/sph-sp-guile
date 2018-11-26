@@ -50,7 +50,7 @@
   (return SCM-UNSPECIFIED))
 
 (define
-  (scm-sp-windowed-sinc-state-update scm-sample-rate scm-freq scm-transition is-high-pass scm-state)
+  (scm-sp-windowed-sinc-state-set scm-sample-rate scm-freq scm-transition is-high-pass scm-state)
   (SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare
@@ -62,7 +62,7 @@
       state (scm-gc-malloc-pointerless (sizeof sp-windowed-sinc-state-t) "windowed-sinc-state")
       *state state-null))
   (status-require
-    (sp-windowed-sinc-state-update
+    (sp-windowed-sinc-state-set
       (scm->sp-sample-rate scm-sample-rate)
       (scm->sp-float scm-freq)
       (scm->sp-float scm-transition)
@@ -86,7 +86,7 @@
       (scm-is-true scm-is-high-pass)))
   (if (or (not (scm-is-true scm-state)) (scm-is-undefined scm-state))
     (set scm-state
-      (scm-sp-windowed-sinc-state-update
+      (scm-sp-windowed-sinc-state-set
         scm-sample-rate scm-freq scm-transition (scm-from-bool is-high-pass) scm-state)))
   (set
     state (scm->sp-windowed-sinc scm-state)
@@ -358,12 +358,12 @@
     an updated state object.
     if no state object has been given, create a new state")
   (scm-c-define-procedure-c
-    "sp-windowed-sinc-state-update"
+    "sp-windowed-sinc-state-set"
     4
     1
     0
-    scm-sp-windowed-sinc-state-update
-    "sample-rate radian-frequency transition is-high-pass [state] -> state
+    scm-sp-windowed-sinc-state-set
+    "sample-rate cutoff transition is-high-pass [state] -> state
     rational rational rational [sp-windowed-sinc] -> sp-windowed-sinc")
   (scm-c-define-procedure-c
     "sp-moving-average!"

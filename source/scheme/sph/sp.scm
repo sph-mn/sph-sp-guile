@@ -198,11 +198,12 @@
   (define* (sp-convolve a b #:optional carryover)
     (let
       ( (result (sp-samples-copy-zero a))
-        (carryover (if carryover (sp-samples-copy carryover) (sp-samples-new (- (sp-samples-length b) 1) 0))))
-      (debug-log (q carryover) carryover)
+        (carryover
+          (if carryover (sp-samples-copy carryover) (sp-samples-new (- (sp-samples-length b) 1) 0))))
       (sp-convolve! result a b carryover) (pair result carryover)))
 
   (define* (sp-windowed-sinc source sample-rate freq transition #:optional is-high-pass state)
-    "sample-vector integer number number false/windowed-sinc-state -> sample-vector"
+    "sample-vector integer number number false/windowed-sinc-state -> sample-vector
+     state is still eventually going to be modified"
     (let (result (sp-samples-copy-zero source))
       (pair result (sp-windowed-sinc! result source sample-rate freq transition is-high-pass state)))))

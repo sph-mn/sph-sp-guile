@@ -35,7 +35,7 @@ SCM scm_sp_convolve_x(SCM result, SCM a, SCM b, SCM carryover) {
   sp_convolve((scm_to_sp_samples(a)), a_len, (scm_to_sp_samples(b)), b_len, c_len, (scm_to_sp_samples(carryover)), (scm_to_sp_samples(result)));
   return (SCM_UNSPECIFIED);
 };
-SCM scm_sp_windowed_sinc_state_update(SCM scm_sample_rate, SCM scm_freq, SCM scm_transition, SCM is_high_pass, SCM scm_state) {
+SCM scm_sp_windowed_sinc_state_set(SCM scm_sample_rate, SCM scm_freq, SCM scm_transition, SCM is_high_pass, SCM scm_state) {
   status_declare;
   sp_windowed_sinc_state_t state_null = { 0 };
   sp_windowed_sinc_state_t* state;
@@ -45,7 +45,7 @@ SCM scm_sp_windowed_sinc_state_update(SCM scm_sample_rate, SCM scm_freq, SCM scm
     state = scm_gc_malloc_pointerless((sizeof(sp_windowed_sinc_state_t)), "windowed-sinc-state");
     *state = state_null;
   };
-  status_require((sp_windowed_sinc_state_update((scm_to_sp_sample_rate(scm_sample_rate)), (scm_to_sp_float(scm_freq)), (scm_to_sp_float(scm_transition)), (scm_is_true(is_high_pass) ? sp_windowed_sinc_hp_ir : sp_windowed_sinc_ir), (&state))));
+  status_require((sp_windowed_sinc_state_set((scm_to_sp_sample_rate(scm_sample_rate)), (scm_to_sp_float(scm_freq)), (scm_to_sp_float(scm_transition)), (scm_is_true(is_high_pass) ? sp_windowed_sinc_hp_ir : sp_windowed_sinc_ir), (&state))));
   scm_state = scm_from_sp_windowed_sinc(state);
 exit:
   scm_from_status_return(scm_state);
@@ -56,7 +56,7 @@ SCM scm_sp_windowed_sinc_x(SCM scm_result, SCM scm_source, SCM scm_sample_rate, 
   boolean is_high_pass;
   is_high_pass = (scm_is_undefined(scm_is_high_pass) ? 0 : scm_is_true(scm_is_high_pass));
   if (!scm_is_true(scm_state) || scm_is_undefined(scm_state)) {
-    scm_state = scm_sp_windowed_sinc_state_update(scm_sample_rate, scm_freq, scm_transition, (scm_from_bool(is_high_pass)), scm_state);
+    scm_state = scm_sp_windowed_sinc_state_set(scm_sample_rate, scm_freq, scm_transition, (scm_from_bool(is_high_pass)), scm_state);
   };
   state = scm_to_sp_windowed_sinc(scm_state);
   status = sp_windowed_sinc((scm_to_sp_samples(scm_source)), (scm_to_sp_samples_length(scm_source)), (scm_to_sp_sample_rate(scm_sample_rate)), (scm_to_sp_float(scm_freq)), (scm_to_sp_float(scm_transition)), is_high_pass, (&state), (scm_to_sp_samples(scm_result)));
@@ -226,7 +226,7 @@ void sp_guile_init() {
   scm_c_define_procedure_c("sp-convolve!", 4, 0, 0, scm_sp_convolve_x, ("result a b carryover -> unspecified"));
   scm_c_define_procedure_c("sp-window-blackman", 2, 0, 0, scm_sp_window_blackman, ("real width -> real"));
   scm_c_define_procedure_c("sp-windowed-sinc!", 5, 2, 0, scm_sp_windowed_sinc_x, ("result source sample-rate freq transition is-high-pass state -> state\n    sample-vector sample-vector integer number number windowed-sinc-state -> unspecified\n    apply a windowed-sinc low-pass filter to source and write to result and return\n    an updated state object.\n    if no state object has been given, create a new state"));
-  scm_c_define_procedure_c("sp-windowed-sinc-state-update", 4, 1, 0, scm_sp_windowed_sinc_state_update, ("sample-rate radian-frequency transition is-high-pass [state] -> state\n    rational rational rational [sp-windowed-sinc] -> sp-windowed-sinc"));
+  scm_c_define_procedure_c("sp-windowed-sinc-state-set", 4, 1, 0, scm_sp_windowed_sinc_state_set, ("sample-rate cutoff transition is-high-pass [state] -> state\n    rational rational rational [sp-windowed-sinc] -> sp-windowed-sinc"));
   scm_c_define_procedure_c("sp-moving-average!", 5, 2, 0, scm_sp_moving_average_x, ("result source previous next radius [start end] -> unspecified\n    sample-vector sample-vector sample-vector sample-vector integer integer integer [integer]"));
   scm_c_define_procedure_c("sp-fftr", 1, 0, 0, scm_sp_fftr, ("sample-vector:values-at-times -> sample-vector:frequencies\n    discrete fourier transform on the input data. only the real part"));
   scm_c_define_procedure_c("sp-fftri", 1, 0, 0, scm_sp_fftri, ("sample-vector:frequencies -> sample-vector:values-at-times\n    inverse discrete fourier transform on the input data. only the real part"));
