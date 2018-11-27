@@ -1,2 +1,6 @@
 #!/bin/sh
-scm-list-documentation "sph sp" "sph sp generate" "sph sp generate sequencer"
+echo "## (sph sp)"
+scm-list-documentation "sph sp"
+echo
+echo "## (sph sp sequencer)"
+scm-list-documentation "sph sp sequencer"

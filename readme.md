@@ -132,59 +132,91 @@ sequencer usage example (tested 2018-10-04). three sines with different frequenc
 
 sp-generate expects sample-f to return single sample numbers or vectors with one sample per channel
 
-## modules
-(sph sp)
-
+# modules
+## (sph sp)
 ```
 f32vector-sum :: f32vector [start end] -> number
+f64-nearly-equal? :: a b c ->
 f64vector-sum :: f64vector [start end] -> number
-float-nearly-equal? :: a b c ->
-sp-alsa-open :: device-name input? channel-count sample-rate latency -> sp-port
+sp-alsa-open :: device-name mode channel-count sample-rate latency -> sp-port
+sp-clip :: a ->
+sp-convolve :: a b [carryover] ->
+sp-convolve! :: result a b carryover -> unspecified
 sp-duration->sample-count :: seconds sample-rate ->
-sp-file-open :: path channel-count sample-rate -> sp-port
+sp-fftr :: sample-vector:values-at-times -> sample-vector:frequencies
+sp-fftr->plot-file :: a path ->
+sp-fftr-plot-display :: a ->
+sp-fftr-plot-file-display :: file-path ->
+sp-fftri :: sample-vector:frequencies -> sample-vector:values-at-times
+sp-file-open :: path mode [channel-count sample-rate] -> sp-port
+sp-fold-integers :: start end f states ... ->
+sp-generate :: integer integer integer procedure false/procedure any ... -> (any ...):states
+sp-moving-average :: sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector
+sp-moving-average! :: result source previous next radius [start end] -> unspecified
+sp-noise-exponential :: [state] ->
+sp-noise-normal :: [state] ->
+sp-noise-uniform :: [state] ->
+sp-path :: number path-state [procedure -> result
+sp-path-new :: sample-rate (symbol param ...) ...
+sp-path-new-p :: number ((symbol:type any:parameter ...) ...) -> path-state
 sp-pi
 sp-plot-render :: file-path ->
 sp-port-channel-count :: sp-port -> integer
 sp-port-close :: sp-port -> boolean
 sp-port-input? :: sp-port -> boolean
-sp-port-position :: sp-port -> integer/boolean
+sp-port-mode-read
+sp-port-mode-read-write
+sp-port-mode-write
+sp-port-position :: sp-port -> integer
+sp-port-position-set :: sp-port integer:sample-offset -> boolean
 sp-port-position? :: sp-port -> boolean
-sp-port-read :: sp-port integer:sample-count -> (f32vector ...):channel-data
-sp-port-sample-rate :: sp-port -> integer/boolean
-sp-port-set-position :: sp-port integer:sample-offset -> boolean
-sp-port-write :: sp-port (f32vector ...):channel-data [integer:sample-count] -> boolean
-sp-port? :: sp-port -> boolean
+sp-port-read :: sp-port integer:sample-count -> (sample-vector ...):channel-data
+sp-port-sample-rate :: sp-port -> integer
+sp-port-write :: sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified
 sp-sample-count->duration :: sample-count sample-rate ->
-sp-segments->alsa :: ((vector ...) ...) ->
-sp-segments->file :: ((vector ...) ...) string ->
-sp-segments->plot :: ((vector ...) ...) string ->
-sp-segments->plot-render :: a path ->
+sp-sample-format
+sp-samples->list :: v ->
+sp-samples->plot-file :: a path ->
+sp-samples-copy :: xvector -> xvector
+sp-samples-copy-zero :: a ->
+sp-samples-copy-zero* :: a c ->
+sp-samples-from-list :: elts ->
+sp-samples-length :: v ->
+sp-samples-map :: procedure:{any:element ... -> any} xvector ... -> xvector
+sp-samples-map! :: procedure:{any:element ... -> any} xvector ... -> unspecified
+sp-samples-new :: length value ->
+sp-samples-plot-display :: a ->
+sp-samples-plot-file-display :: file-path ->
+sp-samples-set! :: v i x ->
+sp-samples? :: obj ->
+sp-segment :: integer integer false/procedure:{index states ... -> number/vector} -> (#(vector:channel ...) . states)
+sp-segments->alsa :: (#(vector:channel ...) ...) -> unspecified
+sp-segments->file :: (#(#(sample ...):channel ...):segment ...) string -> unspecified
+sp-segments->plot :: (#(vector:channel ...) ...) string ->
+sp-segments->plot-render :: a path channel ->
+sp-sinc :: a ->
+sp-sine :: time freq ->
 sp-sine! :: data len sample-duration freq phase amp -> unspecified
-sp-sine-lq! :: data len sample-duration freq phase amp -> unspecified
-sp-clip :: a ->
-sp-fold-integers :: start end f states ... ->
-sp-generate :: integer number number procedure procedure any ... -> (any ...):states
-sp-noise :: integer [{random-state -> real} random-state] -> f64vector
-sp-path :: number path-state [procedure -> result]
-sp-path-new :: sample-rate (symbol:segment-type param ...) ...
-sp-path-new-p :: number ((symbol:type any:parameter ...) ...) -> path-state
-sp-segment :: integer procedure -> (vector . states)
-sp-sine :: time freq -> number
+sp-sine-lq! :: a b c d e f ->
+sp-spectral-inversion :: a ->
+sp-spectral-reversal :: a ->
+sp-window-blackman :: real width -> real
+sp-windowed-sinc :: sample-vector integer number number false/windowed-sinc-state -> sample-vector
+sp-windowed-sinc! :: a b c d e [f g] ->
 ```
 
-(sph sp sequencer)
+## (sph sp sequencer)
 ```
-seq :: integer list -> integer/vector:sample-data list:state
+seq :: integer list procedure:{results state -> any:seq-result} -> any:seq-result
 seq-default-mixer :: output ->
 seq-event :: name f optional ...
-seq-event-custom :: a ->
 seq-event-f :: a ->
 seq-event-groups :: a ->
 seq-event-list->events :: a ->
 seq-event-name :: a ->
 seq-event-new :: procedure #:key integer (symbol ...) any -> vector
 seq-event-start :: a ->
-seq-event-update :: a #:f #:start #:name #:groups #:custom ->
+seq-event-update :: a #:f #:start #:name #:groups #:event-state ->
 seq-events-merge :: events:target events:source -> events
 seq-index-data :: a ->
 seq-index-end :: a ->
@@ -199,15 +231,15 @@ seq-index-next :: index time state ->
 seq-index-start :: a ->
 seq-index-update :: a #:data #:end #:events #:f #:i-f #:start ->
 seq-output :: symbol integer/vector/any seq-state list list:alist -> list
-seq-output-new :: name data custom event ->
+seq-output-new :: name data event-state event ->
 seq-state-add-events :: seq-state seq-event-list/seq-events ... -> state
-seq-state-custom :: a ->
-seq-state-events-custom :: a ->
+seq-state-event-states :: a ->
 seq-state-index :: a ->
 seq-state-index-i :: a ->
 seq-state-input :: a ->
-seq-state-new :: procedure [#:event-f-list list #:custom alist] -> seq-state
+seq-state-new :: procedure [#:event-f-list list #:user-value alist] -> seq-state
 seq-state-options :: a ->
 seq-state-output :: a ->
-seq-state-update :: a #:custom #:events-f #:events-custom #:index #:index-i #:input #:mixer #:options #:output -> state
+seq-state-update :: a #:user-value #:events-f #:event-states #:index #:index-i #:input #:mixer #:options #:output ->
+seq-state-user-value :: a ->
 ```
