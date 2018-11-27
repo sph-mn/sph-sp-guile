@@ -1,4 +1,4 @@
-(library (sph sp generate sequencer)
+(library (sph sp sequencer)
   (export
     seq
     seq-default-mixer
@@ -44,10 +44,10 @@
     (sph list other)
     (sph number)
     (sph vector)
-    (only (sph sp generate) sp-clip)
+    (only (sph sp) sp-clip)
     (only (srfi srfi-1) zip partition))
 
-  (define sph-sp-generate-sequencer-description
+  (define sph-sp-sequencer-description
     "seq calls sample generating functions at customisable times, shares state values between them and
      mixes output values to create a single result. seq can return single sample values or sample arrays,
      this depends completely on the user supplied events-f and event-f functions")
@@ -287,7 +287,7 @@
                               event (- time (seq-event-start event))
                               (or (alist-ref event-states event-name) (seq-event-state event)))))
                         (if event-result
-                          (list-let event-result (data state . event-state)
+                          (list-bind event-result (data state . event-state)
                             (loop
                               (seq-state-update state #:output
                                 (pair (seq-output-new event-name data event-state event)

@@ -1,6 +1,6 @@
-(define-test-module (test module sph sp generate sequencer)
+(define-test-module (test module sph sp sequencer)
   (import
-    (sph sp generate sequencer))
+    (sph sp sequencer))
 
   (test-execute-procedures-lambda
     (seq-event-list->events (()) () (((#()) (#()))) ((#()) (#())) ((() ())) (() ()))

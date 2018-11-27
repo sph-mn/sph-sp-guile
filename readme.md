@@ -43,7 +43,7 @@ installed files
 
 # usage
 ```scheme
-(import (sph sp) (sph sp generate))
+(import (sph sp))
 
 (define sample-rate 16000)
 (define channel-count 1)
@@ -60,7 +60,6 @@ installed files
 (sp-port-close file)
 
 ;-- sp-generate
-(import (sph sp generate))
 
 (define time-start 0)
 (define duration-seconds 2)
@@ -83,7 +82,7 @@ installed files
 sequencer usage example (tested 2018-10-04). three sines with different frequencies that start 0.5 seconds apart and last 0.5 seconds. this example assumes gnuplot is installed to display a plot of the result.
 
 ```scheme
-(import (sph) (sph sp) (sph sp generate) (sph sp generate sequencer))
+(import (sph) (sph sp) (sph sp sequencer))
 
 (define (sound-a time state event duration custom)
   "duration is time passed since the start of the event"
@@ -162,10 +161,6 @@ sp-segments->plot :: ((vector ...) ...) string ->
 sp-segments->plot-render :: a path ->
 sp-sine! :: data len sample-duration freq phase amp -> unspecified
 sp-sine-lq! :: data len sample-duration freq phase amp -> unspecified
-```
-
-(sph sp generate)
-```
 sp-clip :: a ->
 sp-fold-integers :: start end f states ... ->
 sp-generate :: integer number number procedure procedure any ... -> (any ...):states
@@ -177,7 +172,7 @@ sp-segment :: integer procedure -> (vector . states)
 sp-sine :: time freq -> number
 ```
 
-(sph sp generate sequencer)
+(sph sp sequencer)
 ```
 seq :: integer list -> integer/vector:sample-data list:state
 seq-default-mixer :: output ->
