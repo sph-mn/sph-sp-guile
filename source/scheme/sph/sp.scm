@@ -58,12 +58,13 @@
     sp-segment
     sp-segments->alsa
     sp-segments->file
-    sp-segments->plot
-    sp-segments->plot-render
+    sp-segments->plot-file
+    sp-segments-plot-display
     sp-sinc
     sp-sine
     sp-sine!
     sp-sine-lq!
+    sp-sines
     sp-spectral-inversion
     sp-spectral-reversal
     sp-window-blackman
@@ -87,6 +88,11 @@
   (define-syntax-rule (sp-samples-new-f uv-create uv-make)
     ; a procedure similar to vector-make except that the fill value can be a procedure used to set the elements
     (l (length value) (if (procedure? value) (uv-create length value) (uv-make length value))))
+
+  (define (sp-sines time . freq)
+    "number number ...
+     get a value for a sum of sines of all specified radian frequencies with decreasing amplitude"
+    (apply + (map-with-index (l (index a) (/ (sp-sine time a) (+ 1 index))) freq)))
 
   (define (sp-sinc a) "the normalised sinc function"
     ; re-implemented in scheme
@@ -190,25 +196,6 @@
           a)
         (sp-port-close out))))
 
-  (define (sp-segments->plot a path channel)
-    "(#(vector:channel ...) ...) string ->
-     write gnuplot compatible sample data to file at path"
-    (call-with-output-file path
-      (l (file)
-        (each
-          (l (segment)
-            (each (l (sample) (display sample file) (newline file))
-              (sp-samples->list (vector-ref segment channel))))
-          a)
-        (newline file))))
-
-  (define (sp-plot-render file-path)
-    (process-replace-p "gnuplot" "--persist"
-      "-e" (string-append "set yrange [-1:1]; plot " (string-quote file-path) " with lines")))
-
-  (define (sp-segments->plot-render a path channel) (sp-segments->plot a path channel)
-    (sp-plot-render path))
-
   (define* (sp-moving-average source prev next distance #:optional start end)
     "sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector"
     (sp-samples-copy-zero* source
@@ -241,6 +228,23 @@
 
   (define (sp-samples-plot-display a)
     (let (path (tmpnam)) (sp-samples->plot-file a path) (sp-samples-plot-file-display path)))
+
+  (define (sp-segments->plot-file a path channel)
+    "(#(vector:channel ...) ...) string ->
+     write gnuplot compatible sample data for one channel to file at path.
+     the file can be rendered with sp-samples-plot-file-display"
+    (call-with-output-file path
+      (l (file)
+        (each
+          (l (segment)
+            (each (l (sample) (display-line sample file))
+              (sp-samples->list (vector-ref segment channel))))
+          a)
+        (newline file))))
+
+  (define (sp-segments-plot-display a path channel)
+    (let (path (tmpnam)) (sp-segments->plot-file a path channel)
+      (sp-samples-plot-file-display path)))
 
   (define sp-fftr-plot-file-display sp-samples-plot-file-display)
 
