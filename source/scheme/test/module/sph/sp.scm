@@ -68,7 +68,20 @@
         ; check of result data to be implemented
         #t)))
 
-  (test-execute-procedures-lambda (sp-windowed-sinc ((2 2 2 2) 200 0.05) #t)
+  (define-test (sp-convolve) "test convolve its the carryover functionality "
+    (let*
+      ( (ir-list (make-list 5 2.0)) (a-list (make-list 5 1.0)) (ir (sp-samples-from-list ir-list))
+        (a (sp-samples-from-list a-list)) (b a)
+        (c a)
+        (result
+          (fold-multiple
+            (l (a state result)
+              (let (b (sp-convolve a ir state)) (list (tail b) (pair (first b) result))))
+            (list a b c) #f null)))
+      (equal? (convolve (append a-list a-list a-list) ir-list)
+        (apply append (map sp-samples->list (reverse (pair (first result) (second result))))))))
+
+  (test-execute-procedures-lambda (sp-convolve) (sp-windowed-sinc ((2 2 2 2) 200 0.05) #t)
     (sp-moving-average
       ; no prev/next
       ((2 2 2 2) #f #f 1) (1.3333333333333333 2.0 2.0 1.3333333333333333)
