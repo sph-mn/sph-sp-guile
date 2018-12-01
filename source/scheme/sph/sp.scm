@@ -219,8 +219,8 @@
   (define (sp-samples-plot-file-display file-path)
     (execute "gnuplot" "--persist"
       "-e"
-      (string-append "set key off; unset xtics; set tics scale 0; plot " (string-quote file-path)
-        " with lines lc rgb \"blue\"")))
+      (string-append "set key off; set size ratio 0.5; plot " (string-quote file-path)
+        " with points pointtype 5 ps 0.3 lc rgb \"black\"")))
 
   (define (sp-samples->plot-file a path)
     (call-with-output-file path
