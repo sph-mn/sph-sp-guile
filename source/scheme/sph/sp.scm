@@ -39,6 +39,7 @@
     sp-port-sample-rate
     sp-port-write
     sp-port?
+    sp-rectangle
     sp-sample-count->duration
     sp-sample-format
     sp-samples->list
@@ -64,9 +65,11 @@
     sp-sine
     sp-sine!
     sp-sine-lq!
+    sp-sine-radians
     sp-sines
     sp-spectral-inversion
     sp-spectral-reversal
+    sp-triangle
     sp-window-blackman
     sp-windowed-sinc
     sp-windowed-sinc!
@@ -88,11 +91,6 @@
   (define-syntax-rule (sp-samples-new-f uv-create uv-make)
     ; a procedure similar to vector-make except that the fill value can be a procedure used to set the elements
     (l (length value) (if (procedure? value) (uv-create length value) (uv-make length value))))
-
-  (define (sp-sines time . freq)
-    "number number ...
-     get a value for a sum of sines of all specified radian frequencies with decreasing amplitude"
-    (apply + (map-with-index (l (index a) (/ (sp-sine time a) (+ 1 index))) freq)))
 
   (define (sp-sinc a) "the normalised sinc function"
     ; re-implemented in scheme
@@ -216,18 +214,24 @@
       (pair result
         (sp-windowed-sinc! result source sample-rate cutoff transition is-high-pass state))))
 
-  (define (sp-samples-plot-file-display file-path)
+  (define* (sp-samples-plot-file-display file-path #:key (type (q lines)) (color "blue"))
     (execute "gnuplot" "--persist"
       "-e"
       (string-append "set key off; set size ratio 0.5; plot " (string-quote file-path)
-        " with points pointtype 5 ps 0.3 lc rgb \"black\"")))
+        " with "
+        (if (string? type) type
+          (case type
+            ((points) "points pointtype 5 ps 0.3")
+            (else "lines")))
+        " lc rgb \"" color "\"")))
 
   (define (sp-samples->plot-file a path)
     (call-with-output-file path
       (l (port) (each (l (a) (display-line a port)) (sp-samples->list a)))))
 
-  (define (sp-samples-plot-display a)
-    (let (path (tmpnam)) (sp-samples->plot-file a path) (sp-samples-plot-file-display path)))
+  (define (sp-samples-plot-display a . display-args)
+    (let (path (tmpnam)) (sp-samples->plot-file a path)
+      (apply sp-samples-plot-file-display path display-args)))
 
   (define (sp-segments->plot-file a path channel)
     "(#(vector:channel ...) ...) string ->
@@ -257,13 +261,16 @@
   (define (sp-fftr-plot-display a)
     (let (path (tmpnam)) (sp-fftr->plot-file a path) (sp-fftr-plot-file-display path)))
 
-  (define (sp-sine time freq)
-    "returns a sample value for a sine value after \"time\" seconds.
-     freq: radians per second
-     time: seconds since start with phase offset 0
-     phase: repeats each 2pi"
-    ; wavelength = pi radians
-    (sin (* time freq)))
+  (define (sp-sine offset freq)
+    "real:radians:phase-offset real:radians-per-s -> real:sample
+     result phase repeats each 2pi"
+    (sin (* freq offset)))
+
+  (define (sp-sines offset . freq)
+    "number:radians number:radians-per-s ... -> real:0..1:sample
+     get a value for a sum of sines of all specified frequencies with
+     linearly decreasing amplitude per added sine"
+    (apply + (map-with-index (l (index a) (/ (sp-sine offset a) (+ 1 index))) freq)))
 
   (define* (sp-noise-uniform #:optional (state *random-state*)) (random:uniform state))
   (define* (sp-noise-exponential #:optional (state *random-state*)) (random:exp state))
@@ -295,23 +302,23 @@
   (define (sp-clip a) "eventually adjust value to not exceed -1 or 1"
     (if (< 0 a) (min 1.0 a) (max -1.0 a)))
 
-  (define (sp-generate sample-rate channel-count start duration segment-f sample-f . states)
-    "integer integer integer procedure false/procedure any ... -> (any ...):states
+  (define (sp-generate sample-rate channel-count duration segment-f sample-f . states)
+    "integer integer procedure false/procedure any ... -> (any ...):states
      calls segment-f for the samples of each second in duration. calls sample-f for each sample.
      if sample-f is false then segment-f is called with new segment data set to zero.
-     segment-f :: env time segment custom ... -> states
-     sample-f :: env time custom ... -> sample-value"
+     segment-f :: env offset:seconds segment custom ... -> (any ...):state
+     sample-f :: env offset:sample-count custom ... -> (sample-value any:state-value ...)"
     (let*
       ((sample-duration (/ 1 sample-rate)) (env (vector sample-rate sample-duration channel-count)))
-      (apply sp-fold-integers start
-        (+ start duration)
-        (l (time . states)
+      (apply sp-fold-integers 0
+        duration
+        (l (offset . states)
           (apply segment-f env
-            time
+            offset
             (apply sp-segment sample-rate
               channel-count
               (and sample-f
-                (l (index . states) (apply sample-f env (+ time (* index sample-duration)) states)))
+                (l (index . states) (apply sample-f env (+ index (* offset sample-rate)) states)))
               states)))
         states)))
 
@@ -420,4 +427,22 @@
       (if (and a (>= time (sp-path-segment-start a)))
         (if (< time (sp-path-segment-end a)) (pair ((sp-path-segment-f a) time) path)
           (sp-path time (sp-path-advance path) c))
-        (pair 0 path)))))
+        (pair 0 path))))
+
+  (define (sp-rectangle offset a b)
+    "number:sample-count ... -> real:sample
+     get a value for a rectangular wave with given lengths of sides a and b"
+    (let (remainder (modulo offset (+ a b))) (if (< remainder a) -1 1)))
+
+  (define (sp-triangle offset a b)
+    "integer:sample-count ... -> real:sample
+     return a sample for a sine wave with side length a and b in number of samples.
+     creates saw waves if either a or b is 0"
+    (let (remainder (modulo offset (+ a b)))
+      (if (< remainder a) (/ remainder a) (- 1 (/ (- remainder a) b)))))
+
+  (define (sp-sine-radians sample-offset sample-width)
+    "integer:sample-count integer:sample-count -> real
+     return the phase offset in radians for a sine that completes a full cycle
+     in width number of samples"
+    (* (modulo sample-offset sample-width) (/ (* 2 sp-pi) sample-width))))
