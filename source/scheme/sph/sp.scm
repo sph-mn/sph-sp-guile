@@ -4,7 +4,7 @@
     f64-nearly-equal?
     f64vector-sum
     sp-alsa-open
-    sp-clip
+    sp-clip~
     sp-convolve
     sp-convolve!
     sp-duration->sample-count
@@ -18,12 +18,13 @@
     sp-generate
     sp-moving-average
     sp-moving-average!
-    sp-noise-exponential
-    sp-noise-normal
-    sp-noise-uniform
+    sp-noise-exponential~
+    sp-noise-normal~
+    sp-noise-uniform~
     sp-path
     sp-path-new
     sp-path-new-p
+    sp-phase-cycle
     sp-pi
     sp-plot-render
     sp-port-channel-count
@@ -39,7 +40,8 @@
     sp-port-sample-rate
     sp-port-write
     sp-port?
-    sp-rectangle
+    sp-rectangle~
+    sp-rectangular
     sp-sample-count->duration
     sp-sample-format
     sp-samples->list
@@ -54,6 +56,7 @@
     sp-samples-new
     sp-samples-plot-display
     sp-samples-plot-file-display
+    sp-samples-ref
     sp-samples-set!
     sp-samples?
     sp-segment
@@ -62,14 +65,15 @@
     sp-segments->plot-file
     sp-segments-plot-display
     sp-sinc
-    sp-sine
     sp-sine!
     sp-sine-lq!
-    sp-sine-radians
-    sp-sines
+    sp-sine-width-radians
+    sp-sines~
+    sp-sine~
     sp-spectral-inversion
     sp-spectral-reversal
     sp-triangle
+    sp-triangle~
     sp-window-blackman
     sp-windowed-sinc
     sp-windowed-sinc!
@@ -261,20 +265,20 @@
   (define (sp-fftr-plot-display a)
     (let (path (tmpnam)) (sp-fftr->plot-file a path) (sp-fftr-plot-file-display path)))
 
-  (define (sp-sine offset freq)
+  (define (sp-sine~ offset freq)
     "real:radians:phase-offset real:radians-per-s -> real:sample
      result phase repeats each 2pi"
     (sin (* freq offset)))
 
-  (define (sp-sines offset . freq)
+  (define (sp-sines~ offset . freq)
     "number:radians number:radians-per-s ... -> real:0..1:sample
      get a value for a sum of sines of all specified frequencies with
      linearly decreasing amplitude per added sine"
-    (apply + (map-with-index (l (index a) (/ (sp-sine offset a) (+ 1 index))) freq)))
+    (apply + (map-with-index (l (index a) (/ (sp-sine~ offset a) (+ 1 index))) freq)))
 
-  (define* (sp-noise-uniform #:optional (state *random-state*)) (random:uniform state))
-  (define* (sp-noise-exponential #:optional (state *random-state*)) (random:exp state))
-  (define* (sp-noise-normal #:optional (state *random-state*)) (random:normal state))
+  (define* (sp-noise-uniform~ #:optional (state *random-state*)) (random:uniform state))
+  (define* (sp-noise-exponential~ #:optional (state *random-state*)) (random:exp state))
+  (define* (sp-noise-normal~ #:optional (state *random-state*)) (random:normal state))
 
   (define (sp-fold-integers start end f . states)
     (let loop ((index start) (states states))
@@ -299,7 +303,7 @@
             (pair result states)))
         (pair result states))))
 
-  (define (sp-clip a) "eventually adjust value to not exceed -1 or 1"
+  (define (sp-clip~ a) "eventually adjust value to not exceed -1 or 1"
     (if (< 0 a) (min 1.0 a) (max -1.0 a)))
 
   (define (sp-generate sample-rate channel-count duration segment-f sample-f . states)
@@ -429,20 +433,38 @@
           (sp-path time (sp-path-advance path) c))
         (pair 0 path))))
 
-  (define (sp-rectangle offset a b)
-    "number:sample-count ... -> real:sample
-     get a value for a rectangular wave with given lengths of sides a and b"
-    (let (remainder (modulo offset (+ a b))) (if (< remainder a) -1 1)))
+  (define (sp-rectangular x a b c d)
+    "integer:sample-count ... -> real:sample
+     alternate between c and d for durations of a and b"
+    (let (remainder (modulo x (+ a b))) (if (< remainder a) c d)))
 
-  (define (sp-triangle offset a b)
+  (define (sp-triangle x a b height)
+    (let (remainder (modulo x (+ a b)))
+      (if (< remainder a) (* remainder (/ height a)) (* (- b (- remainder a)) (/ height b)))))
+
+  (define (sp-rectangle~ x a b)
+    "integer:sample-count ... -> real:sample
+     get a value for a rectangular wave with given lengths of sides a and b"
+    (sp-rectangular x a b -1 1))
+
+  (define (sp-triangle~ x a b)
     "integer:sample-count ... -> real:sample
      return a sample for a sine wave with side length a and b in number of samples.
      creates saw waves if either a or b is 0"
-    (let (remainder (modulo offset (+ a b)))
-      (if (< remainder a) (/ remainder a) (- 1 (/ (- remainder a) b)))))
+    (- (sp-triangle x a b 2) 1))
 
-  (define (sp-sine-radians sample-offset sample-width)
+  (define (sp-sine-width-radians sample-offset sample-width)
     "integer:sample-count integer:sample-count -> real
      return the phase offset in radians for a sine that completes a full cycle
      in width number of samples"
-    (* (modulo sample-offset sample-width) (/ (* 2 sp-pi) sample-width))))
+    (* (modulo sample-offset sample-width) (/ (* 2 sp-pi) sample-width)))
+
+  (define (sp-phase-cycle next-width next-height state)
+    "integer integer false/previous-result -> (result _ ...):state
+     a phase generator that uses next-width and next-height only if it doesnt interrupt an active cycle.
+     this keeps phases continuous and cycles phase aligned but doesnt create higher resolution transitions between cycles"
+    (apply
+      (l (relative-x width height)
+        (if (= relative-x width) (list 0 0 next-width next-height)
+          (list (* (+ 1 relative-x) (/ height width)) (+ 1 relative-x) width height)))
+      (or (and state (tail state)) (list 0 next-width next-height)))))
