@@ -24,7 +24,9 @@
     sp-path
     sp-path-new
     sp-path-new-p
+    sp-phase
     sp-phase-cycle
+    sp-phase-sine-width
     sp-pi
     sp-plot-render
     sp-port-channel-count
@@ -67,7 +69,6 @@
     sp-sinc
     sp-sine!
     sp-sine-lq!
-    sp-sine-width-radians
     sp-sines~
     sp-sine~
     sp-spectral-inversion
@@ -84,6 +85,7 @@
     (sph)
     (sph list)
     (sph math)
+    (sph number)
     (sph process)
     (sph string)
     (sph uniform-vector)
@@ -453,18 +455,27 @@
      creates saw waves if either a or b is 0"
     (- (sp-triangle x a b 2) 1))
 
-  (define (sp-sine-width-radians sample-offset sample-width)
+  (define (sp-phase-sine-width offset width)
     "integer:sample-count integer:sample-count -> real
      return the phase offset in radians for a sine that completes a full cycle
      in width number of samples"
-    (* (modulo sample-offset sample-width) (/ (* 2 sp-pi) sample-width)))
+    (* (modulo offset width) (/ (* 2 sp-pi) width)))
 
-  (define (sp-phase-cycle next-width next-height state)
+  (define (sp-phase-cycle width height state)
     "integer integer false/previous-result -> (result _ ...):state
-     a phase generator that uses next-width and next-height only if it doesnt interrupt an active cycle.
+     a linear phase generator that uses the given width and height only if it doesnt interrupt an active cycle.
      this keeps phases continuous and cycles phase aligned but doesnt create higher resolution transitions between cycles"
     (apply
-      (l (relative-x width height)
-        (if (= relative-x width) (list 0 0 next-width next-height)
-          (list (* (+ 1 relative-x) (/ height width)) (+ 1 relative-x) width height)))
-      (or (and state (tail state)) (list 0 next-width next-height)))))
+      (l (x active-width active-height)
+        (if (= x active-width) (list 0 0 width height)
+          (list (* (+ 1 x) (/ active-height active-width)) (+ 1 x) active-width active-height)))
+      (or (and state (tail state)) (list 0 width height))))
+
+  (define (sp-phase y change phase-size)
+    "number number number -> number
+     phase generator that allows for high resolution modulation including non-linear transitions
+     y: previous result or another starting value to continue from
+     change: how fast the phase should progress
+     phase-size: value at which the cycle should repeat
+     example: (sp-phase 0.0 (/ (* 2 sp-pi) 200) (* 2 sp-pi))"
+    (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y))))
