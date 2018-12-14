@@ -139,28 +139,30 @@ f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
 f64vector-sum :: f64vector [start end] -> number
 sp-alsa-open :: device-name mode channel-count sample-rate latency -> sp-port
-sp-clip :: a ->
+sp-clip~ :: a ->
 sp-convolve :: a b [carryover] ->
 sp-convolve! :: result a b carryover -> unspecified
 sp-duration->sample-count :: seconds sample-rate ->
 sp-fftr :: sample-vector:values-at-times -> sample-vector:frequencies
 sp-fftr->plot-file :: a path ->
 sp-fftr-plot-display :: a ->
-sp-fftr-plot-file-display :: file-path ->
+sp-fftr-plot-file-display :: file-path #:type #:color ->
 sp-fftri :: sample-vector:frequencies -> sample-vector:values-at-times
 sp-file-open :: path mode [channel-count sample-rate] -> sp-port
 sp-fold-integers :: start end f states ... ->
-sp-generate :: integer integer integer procedure false/procedure any ... -> (any ...):states
+sp-generate :: integer integer procedure false/procedure any ... -> (any ...):states
 sp-moving-average :: sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector
 sp-moving-average! :: result source previous next radius [start end] -> unspecified
-sp-noise-exponential :: [state] ->
-sp-noise-normal :: [state] ->
-sp-noise-uniform :: [state] ->
+sp-noise-exponential~ :: [state] ->
+sp-noise-normal~ :: [state] ->
+sp-noise-uniform~ :: [state] ->
 sp-path :: number path-state [procedure -> result
 sp-path-new :: sample-rate (symbol param ...) ...
 sp-path-new-p :: number ((symbol:type any:parameter ...) ...) -> path-state
+sp-phase :: number number number -> number
+sp-phase-cycle :: integer integer false/previous-result -> (result _ ...):state
+sp-phase-sine-width :: integer:sample-count integer:sample-count -> real
 sp-pi
-sp-plot-render :: file-path ->
 sp-port-channel-count :: sp-port -> integer
 sp-port-close :: sp-port -> boolean
 sp-port-input? :: sp-port -> boolean
@@ -173,6 +175,8 @@ sp-port-position? :: sp-port -> boolean
 sp-port-read :: sp-port integer:sample-count -> (sample-vector ...):channel-data
 sp-port-sample-rate :: sp-port -> integer
 sp-port-write :: sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified
+sp-rectangle~ :: integer:sample-count ... -> real:sample
+sp-rectangular :: integer:sample-count ... -> real:sample
 sp-sample-count->duration :: sample-count sample-rate ->
 sp-sample-format
 sp-samples->list :: v ->
@@ -185,24 +189,28 @@ sp-samples-length :: v ->
 sp-samples-map :: procedure:{any:element ... -> any} xvector ... -> xvector
 sp-samples-map! :: procedure:{any:element ... -> any} xvector ... -> unspecified
 sp-samples-new :: length value ->
-sp-samples-plot-display :: a ->
-sp-samples-plot-file-display :: file-path ->
+sp-samples-plot-display :: a display-args ... ->
+sp-samples-plot-file-display :: file-path #:type #:color ->
+sp-samples-ref :: v i ->
 sp-samples-set! :: v i x ->
 sp-samples? :: obj ->
 sp-segment :: integer integer false/procedure:{index states ... -> number/vector} -> (#(vector:channel ...) . states)
 sp-segments->alsa :: (#(vector:channel ...) ...) -> unspecified
 sp-segments->file :: (#(#(sample ...):channel ...):segment ...) string -> unspecified
-sp-segments->plot :: (#(vector:channel ...) ...) string ->
-sp-segments->plot-render :: a path channel ->
+sp-segments->plot-file :: (#(vector:channel ...) ...) string ->
+sp-segments-plot-display :: a path channel ->
 sp-sinc :: a ->
-sp-sine :: time freq ->
-sp-sine! :: data len sample-duration freq phase amp -> unspecified
-sp-sine-lq! :: a b c d e f ->
+sp-sines~ :: number:radians number:radians-per-s ... -> real:0..1:sample
+sp-sine~ :: real:radians:phase-offset real:radians-per-s -> real:sample
 sp-spectral-inversion :: a ->
 sp-spectral-reversal :: a ->
+sp-triangle :: x a b height ->
+sp-triangle~ :: integer:sample-count ... -> real:sample
 sp-window-blackman :: real width -> real
-sp-windowed-sinc :: sample-vector integer number number false/windowed-sinc-state -> sample-vector
-sp-windowed-sinc! :: a b c d e [f g] ->
+sp-windowed-sinc-bp-br :: samples real real real boolean false/convolution-filter-state -> samples
+sp-windowed-sinc-bp-br! :: a b c d e f g ->
+sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
+sp-windowed-sinc-lp-hp! :: a b c d e f ->
 ```
 
 ## (sph sp sequencer)

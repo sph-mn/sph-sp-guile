@@ -44,7 +44,6 @@
     (sph list other)
     (sph number)
     (sph vector)
-    (only (sph sp) sp-clip)
     (only (srfi srfi-1) zip partition))
 
   (define sph-sp-sequencer-description
@@ -221,7 +220,7 @@
      sum the samples of each channel, clip and return a vector with one sample per channel"
     (if (null? output) (vector)
       (list->vector
-        (map sp-clip
+        (map (l (a) (max -1 (min 1 a)))
           (map-apply float-sum
             (apply zip (map (compose vector->list any->vector seq-output-data) output)))))))
 

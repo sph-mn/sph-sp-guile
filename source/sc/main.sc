@@ -1,6 +1,4 @@
 (pre-include "./helper.c" "./foreign/sph/float.c")
-(define-sp-sine! scm-sp-sine! sp-sine)
-(define-sp-sine! scm-sp-sine-lq! sp-sine)
 
 (define (scm-sp-port-channel-count scm-a) (SCM SCM)
   (return (scm-from-sp-channel-count (: (scm->sp-port scm-a) channel-count))))
@@ -42,62 +40,57 @@
   (if (< c-len (- b-len 1))
     (scm-c-error
       status-group-sp-guile
-      "invalid-argument-size"
-      "carryover argument bytevector must be at least (- (length b) 1)"))
+      "invalid-argument-size" "carryover argument bytevector must be at least (- (length b) 1)"))
   (sp-convolve
     (scm->sp-samples a)
     a-len (scm->sp-samples b) b-len c-len (scm->sp-samples carryover) (scm->sp-samples result))
   (return SCM-UNSPECIFIED))
 
 (define
-  (scm-sp-windowed-sinc-state-set scm-sample-rate scm-freq scm-transition is-high-pass scm-state)
-  (SCM SCM SCM SCM SCM SCM)
+  (scm-sp-windowed-sinc-lp-hp! scm-out scm-in scm-cutoff scm-transition scm-is-high-pass scm-state)
+  (SCM SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare
-    state-null (struct-variable sp-windowed-sinc-state-t 0)
-    state sp-windowed-sinc-state-t*)
-  (if (and (not SCM-UNDEFINED) (scm-is-true scm-state))
-    (set state (scm->sp-windowed-sinc scm-state))
-    (set
-      state (scm-gc-malloc-pointerless (sizeof sp-windowed-sinc-state-t) "windowed-sinc-state")
-      *state state-null))
+    state sp-convolution-filter-state-t*
+    is-high-pass boolean)
+  (set
+    is-high-pass (scm-is-true scm-is-high-pass)
+    state
+    (if* (scm-is-true scm-state) (scm->sp-convolution-filter-state scm-state)
+      0))
   (status-require
-    (sp-windowed-sinc-state-set
-      (scm->sp-sample-rate scm-sample-rate)
-      (scm->sp-float scm-freq)
-      (scm->sp-float scm-transition)
-      (if* (scm-is-true is-high-pass) sp-windowed-sinc-hp-ir
-        sp-windowed-sinc-ir)
-      &state))
-  (set scm-state (scm-from-sp-windowed-sinc state))
+    (sp-windowed-sinc-lp-hp
+      (scm->sp-samples scm-in)
+      (scm->sp-samples-length scm-in)
+      (scm->sp-float scm-cutoff)
+      (scm->sp-float scm-transition) is-high-pass &state (scm->sp-samples scm-out)))
+  (if (not (scm-is-true scm-state)) (set scm-state (scm-from-sp-convolution-filter-state state)))
   (label exit
     (scm-from-status-return scm-state)))
 
 (define
-  (scm-sp-windowed-sinc!
-    scm-result scm-source scm-sample-rate scm-freq scm-transition scm-is-high-pass scm-state)
+  (scm-sp-windowed-sinc-bp-br!
+    scm-out scm-in scm-cutoff-l scm-cutoff-h scm-transition scm-is-reject scm-state)
   (SCM SCM SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare
-    state sp-windowed-sinc-state-t*
-    is-high-pass boolean)
-  (set is-high-pass
-    (if* (scm-is-undefined scm-is-high-pass) 0
-      (scm-is-true scm-is-high-pass)))
-  (if (or (not (scm-is-true scm-state)) (scm-is-undefined scm-state))
-    (set scm-state
-      (scm-sp-windowed-sinc-state-set
-        scm-sample-rate scm-freq scm-transition (scm-from-bool is-high-pass) scm-state)))
+    state sp-convolution-filter-state-t*
+    is-reject boolean)
   (set
-    state (scm->sp-windowed-sinc scm-state)
-    status
-    (sp-windowed-sinc
-      (scm->sp-samples scm-source)
-      (scm->sp-samples-length scm-source)
-      (scm->sp-sample-rate scm-sample-rate)
-      (scm->sp-float scm-freq)
-      (scm->sp-float scm-transition) is-high-pass &state (scm->sp-samples scm-result)))
-  (scm-from-status-return scm-state))
+    is-reject (scm-is-true scm-is-reject)
+    state
+    (if* (scm-is-true scm-state) (scm->sp-convolution-filter-state scm-state)
+      0))
+  (status-require
+    (sp-windowed-sinc-bp-br
+      (scm->sp-samples scm-in)
+      (scm->sp-samples-length scm-in)
+      (scm->sp-float scm-cutoff-l)
+      (scm->sp-float scm-cutoff-h)
+      (scm->sp-float scm-transition) is-reject &state (scm->sp-samples scm-out)))
+  (if (not (scm-is-true scm-state)) (set scm-state (scm-from-sp-convolution-filter-state state)))
+  (label exit
+    (scm-from-status-return scm-state)))
 
 (define
   (scm-sp-moving-average! scm-result scm-source scm-prev scm-next scm-radius scm-start scm-end)
@@ -296,9 +289,6 @@
 (define (scm-sp-window-blackman a width) (SCM SCM SCM)
   (scm-from-sp-float (sp-window-blackman (scm->sp-float a) (scm->sp-sample-count width))))
 
-; windowed-sinc-ir
-; windowed-sinc-hp-ir
-
 (define (scm-sp-sample-format) SCM
   (case = sp-sample-format
     (sp-sample-format-f64 (return (scm-from-latin1-symbol "f64")))
@@ -306,6 +296,9 @@
     (sp-sample-format-int32 (return (scm-from-latin1-symbol "int32")))
     (sp-sample-format-int16 (return (scm-from-latin1-symbol "int16")))
     (sp-sample-format-int8 (return (scm-from-latin1-symbol "int8")))))
+
+(define (scm-sp-convolution-filter-state-finalize a) (void SCM)
+  (sp-convolution-filter-state-free (scm->sp-convolution-filter-state a)))
 
 (define (sp-guile-init) void
   (declare
@@ -318,53 +311,39 @@
     scm-symbol-data (scm-from-latin1-symbol "data")
     type-slots (scm-list-1 scm-symbol-data)
     scm-type-port (scm-make-foreign-object-type (scm-from-latin1-symbol "sp-port") type-slots 0)
-    scm-type-windowed-sinc
-    (scm-make-foreign-object-type (scm-from-latin1-symbol "sp-windowed-sinc") type-slots 0))
+    scm-type-convolution-filter-state
+    (scm-make-foreign-object-type
+      (scm-from-latin1-symbol "sp-convolution-filter-state")
+      type-slots scm-sp-convolution-filter-state-finalize))
   (scm-c-module-define m "sp-sample-format" (scm-sp-sample-format sp-sample-format))
   (scm-c-module-define m "sp-port-mode-read" (scm-from-uint8 sp-port-mode-read))
   (scm-c-module-define m "sp-port-mode-write" (scm-from-uint8 sp-port-mode-write))
   (scm-c-module-define m "sp-port-mode-read-write" (scm-from-uint8 sp-port-mode-read-write))
   scm-c-define-procedure-c-init
   (scm-c-define-procedure-c
-    "sp-sine!"
-    6
-    0
-    0
-    scm-sp-sine!
-    "data len sample-duration freq phase amp -> unspecified
-    sample-vector integer integer rational rational rational rational")
-  (scm-c-define-procedure-c
-    "sp-sine-lq!"
-    6
-    0
-    0
-    scm-sp-sine-lq!
-    "data len sample-duration freq phase amp  -> unspecified
-    sample-vector integer integer rational rational rational rational
-    faster, lower precision version of sp-sine!.
-    currently faster by a factor of about 2.6")
-  (scm-c-define-procedure-c
     "sp-convolve!" 4 0 0 scm-sp-convolve! "result a b carryover -> unspecified")
   (scm-c-define-procedure-c "sp-window-blackman" 2 0 0 scm-sp-window-blackman "real width -> real")
   (scm-c-define-procedure-c
-    "sp-windowed-sinc!"
-    5
-    2
+    "sp-windowed-sinc-lp-hp!"
+    6
     0
-    scm-sp-windowed-sinc!
-    "result source sample-rate freq transition is-high-pass state -> state
-    sample-vector sample-vector integer number number windowed-sinc-state -> unspecified
-    apply a windowed-sinc low-pass filter to source and write to result and return
+    0
+    scm-sp-windowed-sinc-lp-hp!
+    "out in cutoff transition is-high-pass state -> state
+    samples samples real:0..1 real.0.1 boolean convolution-filter-state -> unspecified
+    apply a windowed-sinc low-pass or high-pass filter to \"in\", write to \"out\" and return
     an updated state object.
-    if no state object has been given, create a new state")
+    if state object is false, create a new state.
+    cutoff and transition are as a fraction of the sampling-rate")
   (scm-c-define-procedure-c
-    "sp-windowed-sinc-state-set"
-    4
-    1
+    "sp-windowed-sinc-bp-br!"
+    7
     0
-    scm-sp-windowed-sinc-state-set
-    "sample-rate cutoff transition is-high-pass [state] -> state
-    rational rational rational [sp-windowed-sinc] -> sp-windowed-sinc")
+    0
+    scm-sp-windowed-sinc-bp-br!
+    "out in  cutoff-l cutoff-h transition is-reject state -> state
+    samples samples real real real boolean convolution-filter-state -> unspecified
+    like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter")
   (scm-c-define-procedure-c
     "sp-moving-average!"
     5

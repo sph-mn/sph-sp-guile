@@ -76,9 +76,10 @@
     sp-triangle
     sp-triangle~
     sp-window-blackman
-    sp-windowed-sinc
-    sp-windowed-sinc!
-    sp-windowed-sinc-state-update)
+    sp-windowed-sinc-bp-br
+    sp-windowed-sinc-bp-br!
+    sp-windowed-sinc-lp-hp
+    sp-windowed-sinc-lp-hp!)
   (import
     (guile)
     (rnrs bytevectors)
@@ -212,13 +213,17 @@
           (if carryover (sp-samples-copy carryover) (sp-samples-new (- (sp-samples-length b) 1) 0))))
       (sp-convolve! result a b carryover) (pair result carryover)))
 
-  (define* (sp-windowed-sinc source sample-rate cutoff transition #:optional is-high-pass state)
-    "sample-vector integer number number false/windowed-sinc-state -> sample-vector
-     cutoff and transition are radian frequencies.
+  (define* (sp-windowed-sinc-lp-hp in cutoff transition is-high-pass state)
+    "samples real real boolean false/convolution-filter-state -> samples
      state is still eventually going to be modified"
-    (let (result (sp-samples-copy-zero source))
-      (pair result
-        (sp-windowed-sinc! result source sample-rate cutoff transition is-high-pass state))))
+    (let (out (sp-samples-copy-zero in))
+      (pair out (sp-windowed-sinc-lp-hp! out in cutoff transition is-high-pass state))))
+
+  (define* (sp-windowed-sinc-bp-br in cutoff-l cutoff-h transition is-reject state)
+    "samples real real real boolean false/convolution-filter-state -> samples
+     state is still eventually going to be modified"
+    (let (out (sp-samples-copy-zero in))
+      (pair out (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition is-reject state))))
 
   (define* (sp-samples-plot-file-display file-path #:key (type (q lines)) (color "blue"))
     (execute "gnuplot" "--persist"
