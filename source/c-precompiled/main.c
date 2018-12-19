@@ -20,17 +20,17 @@ SCM scm_sp_port_position_set(SCM scm_port, SCM scm_sample_offset) {
   status = sp_port_position_set((scm_to_sp_port(scm_port)), (scm_to_size_t(scm_sample_offset)));
   scm_from_status_return(SCM_UNSPECIFIED);
 };
-SCM scm_sp_convolve_x(SCM result, SCM a, SCM b, SCM carryover) {
+SCM scm_sp_convolve_x(SCM out, SCM a, SCM b, SCM carryover, SCM carryover_len) {
   sp_sample_count_t a_len;
   sp_sample_count_t b_len;
   sp_sample_count_t c_len;
   a_len = scm_to_sp_samples_length(a);
   b_len = scm_to_sp_samples_length(b);
-  c_len = scm_to_sp_samples_length(carryover);
+  c_len = (scm_is_integer(carryover_len) ? scm_to_sp_sample_count(carryover_len) : scm_to_sp_samples_length(carryover));
   if (c_len < (b_len - 1)) {
     scm_c_error(status_group_sp_guile, "invalid-argument-size", ("carryover argument bytevector must be at least (- (length b) 1)"));
   };
-  sp_convolve((scm_to_sp_samples(a)), a_len, (scm_to_sp_samples(b)), b_len, c_len, (scm_to_sp_samples(carryover)), (scm_to_sp_samples(result)));
+  sp_convolve((scm_to_sp_samples(a)), a_len, (scm_to_sp_samples(b)), b_len, c_len, (scm_to_sp_samples(carryover)), (scm_to_sp_samples(out)));
   return (SCM_UNSPECIFIED);
 };
 SCM scm_sp_windowed_sinc_lp_hp_x(SCM scm_out, SCM scm_in, SCM scm_cutoff, SCM scm_transition, SCM scm_is_high_pass, SCM scm_state) {
@@ -46,13 +46,67 @@ SCM scm_sp_windowed_sinc_lp_hp_x(SCM scm_out, SCM scm_in, SCM scm_cutoff, SCM sc
 exit:
   scm_from_status_return(scm_state);
 };
-SCM scm_sp_windowed_sinc_bp_br_x(SCM scm_out, SCM scm_in, SCM scm_cutoff_l, SCM scm_cutoff_h, SCM scm_transition, SCM scm_is_reject, SCM scm_state) {
+SCM scm_sp_windowed_sinc_bp_br_x(SCM scm_out, SCM scm_in, SCM scm_cutoff_l, SCM scm_cutoff_h, SCM scm_transition_l, SCM scm_transition_h, SCM scm_is_reject, SCM scm_state) {
   status_declare;
   sp_convolution_filter_state_t* state;
   boolean is_reject;
   is_reject = scm_is_true(scm_is_reject);
   state = (scm_is_true(scm_state) ? scm_to_sp_convolution_filter_state(scm_state) : 0);
-  status_require((sp_windowed_sinc_bp_br((scm_to_sp_samples(scm_in)), (scm_to_sp_samples_length(scm_in)), (scm_to_sp_float(scm_cutoff_l)), (scm_to_sp_float(scm_cutoff_h)), (scm_to_sp_float(scm_transition)), is_reject, (&state), (scm_to_sp_samples(scm_out)))));
+  status_require((sp_windowed_sinc_bp_br((scm_to_sp_samples(scm_in)), (scm_to_sp_samples_length(scm_in)), (scm_to_sp_float(scm_cutoff_l)), (scm_to_sp_float(scm_cutoff_h)), (scm_to_sp_float(scm_transition_l)), (scm_to_sp_float(scm_transition_h)), is_reject, (&state), (scm_to_sp_samples(scm_out)))));
+  if (!scm_is_true(scm_state)) {
+    scm_state = scm_from_sp_convolution_filter_state(state);
+  };
+exit:
+  scm_from_status_return(scm_state);
+};
+SCM scm_sp_windowed_sinc_lp_hp_ir(SCM scm_cutoff, SCM scm_transition, SCM scm_is_high_pass) {
+  sp_sample_t* ir;
+  sp_sample_count_t ir_len;
+  status_declare;
+  status_require((sp_windowed_sinc_lp_hp_ir((scm_to_sp_float(scm_cutoff)), (scm_to_sp_float(scm_transition)), (scm_is_true(scm_is_high_pass)), (&ir), (&ir_len))));
+exit:
+  scm_from_status_return((scm_c_take_samples(ir, ir_len)));
+};
+SCM scm_sp_windowed_sinc_bp_br_ir(SCM scm_cutoff_l, SCM scm_cutoff_h, SCM scm_transition_l, SCM scm_transition_h, SCM scm_is_reject) {
+  sp_sample_t* ir;
+  sp_sample_count_t ir_len;
+  status_declare;
+  status_require((sp_windowed_sinc_bp_br_ir((scm_to_sp_float(scm_cutoff_l)), (scm_to_sp_float(scm_cutoff_h)), (scm_to_sp_float(scm_transition_l)), (scm_to_sp_float(scm_transition_h)), (scm_is_true(scm_is_reject)), (&ir), (&ir_len))));
+exit:
+  scm_from_status_return((scm_c_take_samples(ir, ir_len)));
+};
+/** an sp ir-f that takes a scm procedure and arguments it is to be called with as a list.
+  the procedure should return a sample vector as a single argument */
+status_t scm_c_sp_ir_f(void* arguments, sp_sample_t** out_ir, sp_sample_count_t* out_len) {
+  status_declare;
+  SCM scm_f;
+  SCM scm_arguments;
+  SCM scm_ir;
+  sp_sample_count_t ir_len;
+  sp_sample_t* ir;
+  scm_f = *((SCM*)(arguments));
+  scm_arguments = *(1 + ((SCM*)(arguments)));
+  scm_ir = scm_apply_0(scm_f, scm_arguments);
+  if (!scm_samples_p(scm_ir)) {
+    status_set_both_goto(status_group_sp_guile, sp_status_id_undefined);
+  };
+  /* copy data as it will be owned by convolution-filter state */
+  ir_len = scm_to_sp_samples_length(scm_ir);
+  status_require((sph_helper_malloc((ir_len * sizeof(sp_sample_t)), (&ir))));
+  memcpy(ir, (scm_to_sp_samples(scm_ir)), ir_len);
+  *out_ir = ir;
+  *out_len = ir_len;
+exit:
+  return (status);
+};
+SCM scm_sp_convolution_filter_x(SCM scm_out, SCM scm_in, SCM scm_ir_f, SCM scm_ir_f_arguments, SCM scm_state) {
+  status_declare;
+  sp_convolution_filter_state_t* state;
+  SCM ir_f_arguments[(2 * sizeof(SCM))];
+  state = (scm_is_true(scm_state) ? scm_to_sp_convolution_filter_state(scm_state) : 0);
+  ir_f_arguments[0] = scm_ir_f;
+  ir_f_arguments[1] = scm_ir_f_arguments;
+  status_require((sp_convolution_filter((scm_to_sp_samples(scm_in)), (scm_to_sp_samples_length(scm_in)), scm_c_sp_ir_f, ir_f_arguments, 2, (&state), (scm_to_sp_samples(scm_out)))));
   if (!scm_is_true(scm_state)) {
     scm_state = scm_from_sp_convolution_filter_state(state);
   };
@@ -219,10 +273,13 @@ void sp_guile_init() {
   scm_c_module_define(m, "sp-port-mode-write", (scm_from_uint8(sp_port_mode_write)));
   scm_c_module_define(m, "sp-port-mode-read-write", (scm_from_uint8(sp_port_mode_read_write)));
   scm_c_define_procedure_c_init;
-  scm_c_define_procedure_c("sp-convolve!", 4, 0, 0, scm_sp_convolve_x, ("result a b carryover -> unspecified"));
+  scm_c_define_procedure_c("sp-convolve!", 4, 1, 0, scm_sp_convolve_x, ("out a b carryover [carryover-len] -> unspecified"));
   scm_c_define_procedure_c("sp-window-blackman", 2, 0, 0, scm_sp_window_blackman, ("real width -> real"));
-  scm_c_define_procedure_c("sp-windowed-sinc-lp-hp!", 6, 0, 0, scm_sp_windowed_sinc_lp_hp_x, ("out in cutoff transition is-high-pass state -> state\n    samples samples real:0..1 real.0.1 boolean convolution-filter-state -> unspecified\n    apply a windowed-sinc low-pass or high-pass filter to \"in\", write to \"out\" and return\n    an updated state object.\n    if state object is false, create a new state.\n    cutoff and transition are as a fraction of the sampling-rate"));
-  scm_c_define_procedure_c("sp-windowed-sinc-bp-br!", 7, 0, 0, scm_sp_windowed_sinc_bp_br_x, ("out in  cutoff-l cutoff-h transition is-reject state -> state\n    samples samples real real real boolean convolution-filter-state -> unspecified\n    like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter"));
+  scm_c_define_procedure_c("sp-windowed-sinc-lp-hp!", 6, 0, 0, scm_sp_windowed_sinc_lp_hp_x, ("out in cutoff transition is-high-pass state -> state\n    samples samples real:0..0.5 real:0..0.5 boolean convolution-filter-state -> unspecified\n    apply a windowed-sinc low-pass or high-pass filter to \"in\", write to \"out\" and return\n    an updated state object.\n    if state object is false, create a new state.\n    cutoff and transition are as a fraction of the sampling-rate"));
+  scm_c_define_procedure_c("sp-windowed-sinc-bp-br!", 8, 0, 0, scm_sp_windowed_sinc_bp_br_x, ("out in  cutoff-l cutoff-h transition-l transition-h is-reject state -> state\n    samples samples real:0..0.5 real real:0..0.5 real boolean convolution-filter-state -> unspecified\n  like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter"));
+  scm_c_define_procedure_c("sp-windowed-sinc-lp-hp-ir", 3, 0, 0, scm_sp_windowed_sinc_lp_hp_ir, ("real real boolean -> samples\n    cutoff transition is-high-pass -> ir\n    get an impulse response kernel for a low-pass or high-pass filter"));
+  scm_c_define_procedure_c("sp-windowed-sinc-bp-br-ir", 5, 0, 0, scm_sp_windowed_sinc_bp_br_ir, ("real real real real boolean -> samples\n    cutoff-l cutoff-h transition-l transition-h is-reject -> ir\n    get an impulse response kernel for a band-pass or band-reject filter"));
+  scm_c_define_procedure_c("sp-convolution-filter!", 5, 0, 0, scm_sp_convolution_filter_x, ("out in ir-f ir-f-arguments state -> state\n     samples samples procedure list sp-convolution-filter-state -> sp-convolution-filter-state"));
   scm_c_define_procedure_c("sp-moving-average!", 5, 2, 0, scm_sp_moving_average_x, ("result source previous next radius [start end] -> unspecified\n    sample-vector sample-vector sample-vector sample-vector integer integer integer [integer]"));
   scm_c_define_procedure_c("sp-fftr", 1, 0, 0, scm_sp_fftr, ("sample-vector:values-at-times -> sample-vector:frequencies\n    discrete fourier transform on the input data. only the real part"));
   scm_c_define_procedure_c("sp-fftri", 1, 0, 0, scm_sp_fftri, ("sample-vector:frequencies -> sample-vector:values-at-times\n    inverse discrete fourier transform on the input data. only the real part"));

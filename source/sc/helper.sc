@@ -8,7 +8,8 @@
   (convert-type (scm-foreign-object-ref a 0) sp-port-t*) (scm->sp-convolution-filter-state a)
   (convert-type (scm-foreign-object-ref a 0) sp-convolution-filter-state-t*) (scm->sp-samples a)
   (convert-type (SCM-BYTEVECTOR-CONTENTS a) sp-sample-t*) (scm->sp-samples-length a)
-  (sp-octets->samples (SCM-BYTEVECTOR-LENGTH a)) (define-sp-sine! scm-id f)
+  (sp-octets->samples (SCM-BYTEVECTOR-LENGTH a)) scm-samples?
+  scm-is-bytevector (define-sp-sine! scm-id f)
   (begin
     "defines scm-sp-sine!, scm-sp-sine-lq!"
     (define (scm-id scm-data scm-len scm-sample-duration scm-freq scm-phase scm-amp)

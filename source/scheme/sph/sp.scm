@@ -5,6 +5,7 @@
     f64vector-sum
     sp-alsa-open
     sp-clip~
+    sp-convolution-filter!
     sp-convolve
     sp-convolve!
     sp-duration->sample-count
@@ -78,8 +79,10 @@
     sp-window-blackman
     sp-windowed-sinc-bp-br
     sp-windowed-sinc-bp-br!
+    sp-windowed-sinc-bp-br-ir
     sp-windowed-sinc-lp-hp
-    sp-windowed-sinc-lp-hp!)
+    sp-windowed-sinc-lp-hp!
+    sp-windowed-sinc-lp-hp-ir)
   (import
     (guile)
     (rnrs bytevectors)
@@ -206,12 +209,12 @@
     (sp-samples-copy-zero* source
       (l (a) (sp-moving-average! a source prev next distance start end))))
 
-  (define* (sp-convolve a b #:optional carryover)
+  (define* (sp-convolve a b #:optional carryover carryover-len)
     (let
       ( (result (sp-samples-copy-zero a))
         (carryover
           (if carryover (sp-samples-copy carryover) (sp-samples-new (- (sp-samples-length b) 1) 0))))
-      (sp-convolve! result a b carryover) (pair result carryover)))
+      (sp-convolve! result a b carryover carryover-len) (pair result carryover)))
 
   (define* (sp-windowed-sinc-lp-hp in cutoff transition is-high-pass state)
     "samples real real boolean false/convolution-filter-state -> samples
@@ -283,9 +286,9 @@
      linearly decreasing amplitude per added sine"
     (apply + (map-with-index (l (index a) (/ (sp-sine~ offset a) (+ 1 index))) freq)))
 
-  (define* (sp-noise-uniform~ #:optional (state *random-state*)) (random:uniform state))
-  (define* (sp-noise-exponential~ #:optional (state *random-state*)) (random:exp state))
-  (define* (sp-noise-normal~ #:optional (state *random-state*)) (random:normal state))
+  (define* (sp-noise-uniform~ #:optional (state *random-state*)) (- (* 2 (random:uniform state)) 1))
+  (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
+  (define* (sp-noise-normal~ #:optional (state *random-state*)) (- (* 2 (random:normal state)) 1))
 
   (define (sp-fold-integers start end f . states)
     (let loop ((index start) (states states))

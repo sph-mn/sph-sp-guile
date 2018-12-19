@@ -66,9 +66,13 @@
       (let* ((in (sp-samples-from-list in)) (out (sp-samples-copy-zero in)))
         (sp-windowed-sinc-lp-hp! out in cutoff transition #f #f)
         (sp-windowed-sinc-lp-hp! out in cutoff transition #t #f)
-        (sp-windowed-sinc-bp-br! out in cutoff cutoff transition #f #f)
-        (sp-windowed-sinc-bp-br! out in cutoff cutoff transition #t #f)
+        (sp-windowed-sinc-bp-br! out in cutoff cutoff transition transition #f #f)
+        (sp-windowed-sinc-bp-br! out in cutoff cutoff transition transition #t #f)
         ; check of result data to be implemented
+        (assert-and (sp-samples? (sp-windowed-sinc-lp-hp-ir 0.1 0.08 #f))
+          (sp-samples? (sp-windowed-sinc-lp-hp-ir 0.1 0.08 #t))
+          (sp-samples? (sp-windowed-sinc-bp-br-ir 0.1 0.1 0.08 0.08 #f))
+          (sp-samples? (sp-windowed-sinc-bp-br-ir 0.1 0.1 0.08 0.08 #t)))
         #t)))
 
   (define-test (sp-convolve) "test convolve and its carryover functionality "
@@ -84,7 +88,16 @@
       (equal? (convolve (append a-list a-list a-list) ir-list)
         (apply append (map sp-samples->list (reverse (pair (first result) (second result))))))))
 
-  (test-execute-procedures-lambda (sp-convolve) (sp-windowed-sinc ((2 2 2 2) 0.1 0.08) #t)
+  (define-test (sp-convolution-filter)
+    (let*
+      ( (a-list (make-list 5 1.0)) (a (sp-samples-from-list a-list)) (b-list (make-list 5 2.0))
+        (b (sp-samples-from-list b-list)) (out (sp-samples-new (- (length a-list) 1) 0.0))
+        (state (sp-convolution-filter! out a (l a b) (list 0.1 0.08) #f))
+        (state (sp-convolution-filter! out a (l a b) (list 0.1 0.08) state)))
+      (sp-samples? out)))
+
+  (test-execute-procedures-lambda (sp-convolution-filter) (sp-convolve)
+    (sp-windowed-sinc ((2 2 2 2) 0.1 0.08) #t)
     (sp-moving-average
       ; no prev/next
       ((2 2 2 2) #f #f 1) (1.3333333333333333 2.0 2.0 1.3333333333333333)

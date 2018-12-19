@@ -28,7 +28,7 @@
   (set status (sp-port-position-set (scm->sp-port scm-port) (scm->size-t scm-sample-offset)))
   (scm-from-status-return SCM-UNSPECIFIED))
 
-(define (scm-sp-convolve! result a b carryover) (SCM SCM SCM SCM SCM)
+(define (scm-sp-convolve! out a b carryover carryover-len) (SCM SCM SCM SCM SCM SCM)
   (declare
     a-len sp-sample-count-t
     b-len sp-sample-count-t
@@ -36,14 +36,16 @@
   (set
     a-len (scm->sp-samples-length a)
     b-len (scm->sp-samples-length b)
-    c-len (scm->sp-samples-length carryover))
+    c-len
+    (if* (scm-is-integer carryover-len) (scm->sp-sample-count carryover-len)
+      (scm->sp-samples-length carryover)))
   (if (< c-len (- b-len 1))
     (scm-c-error
       status-group-sp-guile
       "invalid-argument-size" "carryover argument bytevector must be at least (- (length b) 1)"))
   (sp-convolve
     (scm->sp-samples a)
-    a-len (scm->sp-samples b) b-len c-len (scm->sp-samples carryover) (scm->sp-samples result))
+    a-len (scm->sp-samples b) b-len c-len (scm->sp-samples carryover) (scm->sp-samples out))
   (return SCM-UNSPECIFIED))
 
 (define
@@ -70,8 +72,9 @@
 
 (define
   (scm-sp-windowed-sinc-bp-br!
-    scm-out scm-in scm-cutoff-l scm-cutoff-h scm-transition scm-is-reject scm-state)
-  (SCM SCM SCM SCM SCM SCM SCM SCM)
+    scm-out
+    scm-in scm-cutoff-l scm-cutoff-h scm-transition-l scm-transition-h scm-is-reject scm-state)
+  (SCM SCM SCM SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare
     state sp-convolution-filter-state-t*
@@ -87,7 +90,84 @@
       (scm->sp-samples-length scm-in)
       (scm->sp-float scm-cutoff-l)
       (scm->sp-float scm-cutoff-h)
-      (scm->sp-float scm-transition) is-reject &state (scm->sp-samples scm-out)))
+      (scm->sp-float scm-transition-l)
+      (scm->sp-float scm-transition-h) is-reject &state (scm->sp-samples scm-out)))
+  (if (not (scm-is-true scm-state)) (set scm-state (scm-from-sp-convolution-filter-state state)))
+  (label exit
+    (scm-from-status-return scm-state)))
+
+(define (scm-sp-windowed-sinc-lp-hp-ir scm-cutoff scm-transition scm-is-high-pass)
+  (SCM SCM SCM SCM)
+  (declare
+    ir sp-sample-t*
+    ir-len sp-sample-count-t)
+  status-declare
+  (status-require
+    (sp-windowed-sinc-lp-hp-ir
+      (scm->sp-float scm-cutoff)
+      (scm->sp-float scm-transition) (scm-is-true scm-is-high-pass) &ir &ir-len))
+  (label exit
+    (scm-from-status-return (scm-c-take-samples ir ir-len))))
+
+(define
+  (scm-sp-windowed-sinc-bp-br-ir
+    scm-cutoff-l scm-cutoff-h scm-transition-l scm-transition-h scm-is-reject)
+  (SCM SCM SCM SCM SCM SCM)
+  (declare
+    ir sp-sample-t*
+    ir-len sp-sample-count-t)
+  status-declare
+  (status-require
+    (sp-windowed-sinc-bp-br-ir
+      (scm->sp-float scm-cutoff-l)
+      (scm->sp-float scm-cutoff-h)
+      (scm->sp-float scm-transition-l)
+      (scm->sp-float scm-transition-h) (scm-is-true scm-is-reject) &ir &ir-len))
+  (label exit
+    (scm-from-status-return (scm-c-take-samples ir ir-len))))
+
+(define (scm-c-sp-ir-f arguments out-ir out-len) (status-t void* sp-sample-t** sp-sample-count-t*)
+  "an sp ir-f that takes a scm procedure and arguments it is to be called with as a list.
+  the procedure should return a sample vector as a single argument"
+  status-declare
+  (declare
+    scm-f SCM
+    scm-arguments SCM
+    scm-ir SCM
+    ir-len sp-sample-count-t
+    ir sp-sample-t*)
+  (set
+    scm-f (pointer-get (convert-type arguments SCM*))
+    scm-arguments (pointer-get (+ 1 (convert-type arguments SCM*)))
+    scm-ir (scm-apply-0 scm-f scm-arguments))
+  (if (not (scm-samples? scm-ir))
+    (status-set-both-goto status-group-sp-guile sp-status-id-undefined))
+  (sc-comment "copy data as it will be owned by convolution-filter state")
+  (set ir-len (scm->sp-samples-length scm-ir))
+  (status-require (sph-helper-malloc (* ir-len (sizeof sp-sample-t)) &ir))
+  (memcpy ir (scm->sp-samples scm-ir) ir-len)
+  (set
+    *out-ir ir
+    *out-len ir-len)
+  (label exit
+    (return status)))
+
+(define (scm-sp-convolution-filter! scm-out scm-in scm-ir-f scm-ir-f-arguments scm-state)
+  (SCM SCM SCM SCM SCM SCM)
+  status-declare
+  (declare
+    state sp-convolution-filter-state-t*
+    ir-f-arguments (array SCM ((* 2 (sizeof SCM)))))
+  (set
+    state
+    (if* (scm-is-true scm-state) (scm->sp-convolution-filter-state scm-state)
+      0)
+    (array-get ir-f-arguments 0) scm-ir-f
+    (array-get ir-f-arguments 1) scm-ir-f-arguments)
+  (status-require
+    (sp-convolution-filter
+      (scm->sp-samples scm-in)
+      (scm->sp-samples-length scm-in) scm-c-sp-ir-f ir-f-arguments 2 &state (scm->sp-samples scm-out)))
   (if (not (scm-is-true scm-state)) (set scm-state (scm-from-sp-convolution-filter-state state)))
   (label exit
     (scm-from-status-return scm-state)))
@@ -321,7 +401,7 @@
   (scm-c-module-define m "sp-port-mode-read-write" (scm-from-uint8 sp-port-mode-read-write))
   scm-c-define-procedure-c-init
   (scm-c-define-procedure-c
-    "sp-convolve!" 4 0 0 scm-sp-convolve! "result a b carryover -> unspecified")
+    "sp-convolve!" 4 1 0 scm-sp-convolve! "out a b carryover [carryover-len] -> unspecified")
   (scm-c-define-procedure-c "sp-window-blackman" 2 0 0 scm-sp-window-blackman "real width -> real")
   (scm-c-define-procedure-c
     "sp-windowed-sinc-lp-hp!"
@@ -330,20 +410,46 @@
     0
     scm-sp-windowed-sinc-lp-hp!
     "out in cutoff transition is-high-pass state -> state
-    samples samples real:0..1 real.0.1 boolean convolution-filter-state -> unspecified
+    samples samples real:0..0.5 real:0..0.5 boolean convolution-filter-state -> unspecified
     apply a windowed-sinc low-pass or high-pass filter to \"in\", write to \"out\" and return
     an updated state object.
     if state object is false, create a new state.
     cutoff and transition are as a fraction of the sampling-rate")
   (scm-c-define-procedure-c
     "sp-windowed-sinc-bp-br!"
-    7
+    8
     0
     0
     scm-sp-windowed-sinc-bp-br!
-    "out in  cutoff-l cutoff-h transition is-reject state -> state
-    samples samples real real real boolean convolution-filter-state -> unspecified
-    like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter")
+    "out in  cutoff-l cutoff-h transition-l transition-h is-reject state -> state
+    samples samples real:0..0.5 real real:0..0.5 real boolean convolution-filter-state -> unspecified
+  like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter")
+  (scm-c-define-procedure-c
+    "sp-windowed-sinc-lp-hp-ir"
+    3
+    0
+    0
+    scm-sp-windowed-sinc-lp-hp-ir
+    "real real boolean -> samples
+    cutoff transition is-high-pass -> ir
+    get an impulse response kernel for a low-pass or high-pass filter")
+  (scm-c-define-procedure-c
+    "sp-windowed-sinc-bp-br-ir"
+    5
+    0
+    0
+    scm-sp-windowed-sinc-bp-br-ir
+    "real real real real boolean -> samples
+    cutoff-l cutoff-h transition-l transition-h is-reject -> ir
+    get an impulse response kernel for a band-pass or band-reject filter")
+  (scm-c-define-procedure-c
+    "sp-convolution-filter!"
+    5
+    0
+    0
+    scm-sp-convolution-filter!
+    "out in ir-f ir-f-arguments state -> state
+     samples samples procedure list sp-convolution-filter-state -> sp-convolution-filter-state")
   (scm-c-define-procedure-c
     "sp-moving-average!"
     5
