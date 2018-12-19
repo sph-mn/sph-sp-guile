@@ -134,14 +134,14 @@ sp-generate expects sample-f to return single sample numbers or vectors with one
 
 # modules
 ## (sph sp)
-```
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
 f64vector-sum :: f64vector [start end] -> number
 sp-alsa-open :: device-name mode channel-count sample-rate latency -> sp-port
 sp-clip~ :: a ->
-sp-convolve :: a b [carryover] ->
-sp-convolve! :: result a b carryover -> unspecified
+sp-convolution-filter! :: a b c d e ->
+sp-convolve :: a b [carryover carryover-len] ->
+sp-convolve! :: out a b carryover [carryover-len] -> unspecified
 sp-duration->sample-count :: seconds sample-rate ->
 sp-fftr :: sample-vector:values-at-times -> sample-vector:frequencies
 sp-fftr->plot-file :: a path ->
@@ -208,13 +208,13 @@ sp-triangle :: x a b height ->
 sp-triangle~ :: integer:sample-count ... -> real:sample
 sp-window-blackman :: real width -> real
 sp-windowed-sinc-bp-br :: samples real real real boolean false/convolution-filter-state -> samples
-sp-windowed-sinc-bp-br! :: a b c d e f g ->
+sp-windowed-sinc-bp-br! :: a b c d e f g h ->
+sp-windowed-sinc-bp-br-ir :: a b c d e ->
 sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
-```
+sp-windowed-sinc-lp-hp-ir :: a b c ->
 
 ## (sph sp sequencer)
-```
 seq :: integer list procedure:{results state -> any:seq-result} -> any:seq-result
 seq-default-mixer :: output ->
 seq-event :: name f optional ...
@@ -250,4 +250,3 @@ seq-state-options :: a ->
 seq-state-output :: a ->
 seq-state-update :: a #:user-value #:events-f #:event-states #:index #:index-i #:input #:mixer #:options #:output ->
 seq-state-user-value :: a ->
-```
