@@ -145,7 +145,7 @@
   (sc-comment "copy data as it will be owned by convolution-filter state")
   (set ir-len (scm->sp-samples-length scm-ir))
   (status-require (sph-helper-malloc (* ir-len (sizeof sp-sample-t)) &ir))
-  (memcpy ir (scm->sp-samples scm-ir) ir-len)
+  (memcpy ir (scm->sp-samples scm-ir) (* ir-len (sizeof sp-sample-t)))
   (set
     *out-ir ir
     *out-len ir-len)

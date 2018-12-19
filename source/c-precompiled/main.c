@@ -93,7 +93,7 @@ status_t scm_c_sp_ir_f(void* arguments, sp_sample_t** out_ir, sp_sample_count_t*
   /* copy data as it will be owned by convolution-filter state */
   ir_len = scm_to_sp_samples_length(scm_ir);
   status_require((sph_helper_malloc((ir_len * sizeof(sp_sample_t)), (&ir))));
-  memcpy(ir, (scm_to_sp_samples(scm_ir)), ir_len);
+  memcpy(ir, (scm_to_sp_samples(scm_ir)), (ir_len * sizeof(sp_sample_t)));
   *out_ir = ir;
   *out_len = ir_len;
 exit:
