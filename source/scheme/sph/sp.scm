@@ -9,14 +9,17 @@
     sp-convolve
     sp-convolve!
     sp-duration->sample-count
+    sp-factor->rads
     sp-fftr
     sp-fftr->plot-file
     sp-fftr-plot-display
     sp-fftr-plot-file-display
     sp-fftri
     sp-file-open
+    sp-filter-bank
     sp-fold-integers
     sp-generate
+    sp-hz->rads
     sp-moving-average
     sp-moving-average!
     sp-noise-exponential~
@@ -43,6 +46,8 @@
     sp-port-sample-rate
     sp-port-write
     sp-port?
+    sp-rads->factor
+    sp-rads->hz
     sp-rectangle~
     sp-rectangular
     sp-sample-count->duration
@@ -486,4 +491,33 @@
      change: how fast the phase should progress
      phase-size: value at which the cycle should repeat
      example: (sp-phase 0.0 (/ (* 2 sp-pi) 200) (* 2 sp-pi))"
-    (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y))))
+    (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y)))
+
+  (define (sp-rads->hz radians-per-second) "real -> real:hertz" (/ radians-per-second (* 2 sp-pi)))
+  (define (sp-hz->rads hertz) "real -> real:radians-per-second" (* hertz 2 sp-pi))
+
+  (define (sp-rads->factor radians-per-second sample-rate)
+    "real integer -> real
+     convert a radian frequency value to a fraction of the sample rate.
+     0.5 is the maximum possible representable frequency, which in hertz is sample-rate divided by 2"
+    (/ (/ radians-per-second (* 2 sp-pi)) sample-rate))
+
+  (define (sp-factor->rads a sample-rate)
+    "convert a fraction of the sample-rate to radian frequency" (* 2 sp-pi a sample-rate))
+
+  (define (sp-filter-bank in points state)
+    "samples ((cutoff-l cutoff-h transition-l transition-h) ...) list -> ((samples ...) . state)
+     apply a series of band-pass filters and return the filtered bands as separate sample arrays.
+     splits a signal into frequency bands.
+     transition and cutoff are as fractions of the sample-rate 0..0.5.
+     state is reset when length of points changes"
+    (fold-right
+      (l (a state result)
+        (apply
+          (l (cutoff-l cutoff-h transition-l transition-h)
+            (let (out (sp-samples-copy-zero in))
+              (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h #f state)
+              (pair (pair out (first result)) (pair state (tail result)))))
+          a))
+      (pair null null) points
+      (if (and state (= (length points) (length state))) state (make-list (length points) #f)))))
