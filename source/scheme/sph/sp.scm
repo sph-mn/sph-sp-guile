@@ -4,6 +4,7 @@
     f64-nearly-equal?
     f64vector-sum
     sp-alsa-open
+    sp-asymmetric-moving-average
     sp-clip~
     sp-convolution-filter!
     sp-convolve
@@ -11,12 +12,10 @@
     sp-duration->sample-count
     sp-factor->rads
     sp-fftr
-    sp-fftr->plot-file
-    sp-fftr-plot-display
-    sp-fftr-plot-file-display
     sp-fftri
     sp-file-open
     sp-filter-bank
+    sp-float-sum
     sp-fold-integers
     sp-generate
     sp-hz->rads
@@ -32,7 +31,14 @@
     sp-phase-cycle
     sp-phase-sine-width
     sp-pi
-    sp-plot-render
+    sp-plot-fftr
+    sp-plot-fftr->file
+    sp-plot-fftr-display-file
+    sp-plot-samples
+    sp-plot-samples->file
+    sp-plot-samples-display-file
+    sp-plot-segments
+    sp-plot-segments->file
     sp-port-channel-count
     sp-port-close
     sp-port-input?
@@ -53,7 +59,6 @@
     sp-sample-count->duration
     sp-sample-format
     sp-samples->list
-    sp-samples->plot-file
     sp-samples-copy
     sp-samples-copy-zero
     sp-samples-copy-zero*
@@ -62,16 +67,12 @@
     sp-samples-map
     sp-samples-map!
     sp-samples-new
-    sp-samples-plot-display
-    sp-samples-plot-file-display
     sp-samples-ref
     sp-samples-set!
     sp-samples?
     sp-segment
     sp-segments->alsa
     sp-segments->file
-    sp-segments->plot-file
-    sp-segments-plot-display
     sp-sinc
     sp-sine!
     sp-sine-lq!
@@ -98,7 +99,8 @@
     (sph process)
     (sph string)
     (sph uniform-vector)
-    (sph vector))
+    (sph vector)
+    (only (srfi srfi-1) drop-right))
 
   (load-extension "libguile-sph-sp" "sp_guile_init")
   (define sp-pi (* 4 (atan 1)))
@@ -233,7 +235,7 @@
     (let (out (sp-samples-copy-zero in))
       (pair out (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition is-reject state))))
 
-  (define* (sp-samples-plot-file-display file-path #:key (type (q lines)) (color "blue"))
+  (define* (sp-plot-samples-display-file file-path #:key (type (q lines)) (color "blue"))
     (execute "gnuplot" "--persist"
       "-e"
       (string-append "set key off; set size ratio 0.5; plot " (string-quote file-path)
@@ -244,15 +246,15 @@
             (else "lines")))
         " lc rgb \"" color "\"")))
 
-  (define (sp-samples->plot-file a path)
+  (define (sp-plot-samples->file a path)
     (call-with-output-file path
       (l (port) (each (l (a) (display-line a port)) (sp-samples->list a)))))
 
-  (define (sp-samples-plot-display a . display-args)
-    (let (path (tmpnam)) (sp-samples->plot-file a path)
-      (apply sp-samples-plot-file-display path display-args)))
+  (define (sp-plot-samples a . display-args)
+    (let (path (tmpnam)) (sp-plot-samples->file a path)
+      (apply sp-plot-samples-display-file path display-args)))
 
-  (define (sp-segments->plot-file a path channel)
+  (define (sp-plot-segments->file a path channel)
     "(#(vector:channel ...) ...) string ->
      write gnuplot compatible sample data for one channel to file at path.
      the file can be rendered with sp-samples-plot-file-display"
@@ -265,20 +267,20 @@
           a)
         (newline file))))
 
-  (define (sp-segments-plot-display a path channel)
-    (let (path (tmpnam)) (sp-segments->plot-file a path channel)
-      (sp-samples-plot-file-display path)))
+  (define (sp-plot-segments a path channel)
+    (let (path (tmpnam)) (sp-plot-segments->file a path channel)
+      (sp-plot-samples-display-file path)))
 
-  (define sp-fftr-plot-file-display sp-samples-plot-file-display)
+  (define sp-plot-fftr-display-file sp-plot-samples-display-file)
 
-  (define (sp-fftr->plot-file a path)
+  (define (sp-plot-fftr->file a path)
     (call-with-output-file path
       (l (port)
         (each-with-index (l (index a) (and (< 0 index) (even? index) (display-line a port)))
-          (sp-samples->list a)))))
+          (sp-samples->list (sp-fftr a))))))
 
-  (define (sp-fftr-plot-display a)
-    (let (path (tmpnam)) (sp-fftr->plot-file a path) (sp-fftr-plot-file-display path)))
+  (define (sp-plot-fftr a)
+    (let (path (tmpnam)) (sp-plot-fftr->file a path) (sp-plot-fftr-display-file path)))
 
   (define (sp-sine~ offset freq)
     "real:radians:phase-offset real:radians-per-s -> real:sample
@@ -486,13 +488,14 @@
 
   (define (sp-phase y change phase-size)
     "number number number -> number
-     phase generator that allows for high resolution modulation including non-linear transitions
-     y: previous result or another starting value to continue from
-     change: how fast the phase should progress
-     phase-size: value at which the cycle should repeat
+     phase generator that allows for high resolution modulation and non-linear transitions.
+     * y: previous result or another starting value to continue from
+     * change: how fast the phase should progress
+     * phase-size: value at which the cycle should repeat
      example: (sp-phase 0.0 (/ (* 2 sp-pi) 200) (* 2 sp-pi))"
     (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y)))
 
+  (define sp-float-sum float-sum)
   (define (sp-rads->hz radians-per-second) "real -> real:hertz" (/ radians-per-second (* 2 sp-pi)))
   (define (sp-hz->rads hertz) "real -> real:radians-per-second" (* hertz 2 sp-pi))
 
@@ -520,4 +523,14 @@
               (pair (pair out (first result)) (pair state (tail result)))))
           a))
       (pair null null) points
-      (if (and state (= (length points) (length state))) state (make-list (length points) #f)))))
+      (if (and state (= (length points) (length state))) state (make-list (length points) #f))))
+
+  (define (sp-asymmetric-moving-average current-value width state)
+    "real integer list -> (result-value . state)
+     a moving average filter that does not consider values that follow the current one.
+     the longer the width, the more calls with a higher value it takes to reach the higher value"
+    (let*
+      ( (state
+          (if (> width (length state)) (append state (make-list (- width (length state)) 0)) state))
+        (state (pair current-value (drop-right state 1))))
+      (pair (/ (apply sp-float-sum state) width) state))))
