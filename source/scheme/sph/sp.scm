@@ -4,6 +4,7 @@
     f32vector-sum
     f64-nearly-equal?
     f64vector-sum
+    fold-integers*
     sp-alsa-open
     sp-asymmetric-moving
     sp-asymmetric-moving-average
@@ -61,6 +62,8 @@
     sp-rads->hz
     sp-rectangle~
     sp-rectangular
+    sp-sample-align
+    sp-sample-align-list
     sp-sample-count->duration
     sp-sample-format
     sp-samples->list
@@ -585,4 +588,36 @@
             ( (average-change (/ (abs (apply + (differences previous))) (- (length previous) 1)))
               (max-change (* max-factor average-change)))
             (max (min (+ max-change (first previous)) current) (- (first previous) max-change)))))
-      current-value width state)))
+      current-value width state))
+
+  (define (fold-integers* count f . init)
+    "integer procedure any ... -> (any ...)
+     f :: integer any:custom ... -> (any:custom ...)
+     fold over integers from 0 to count minus 1 with zero or more separate state variables"
+    (let loop ((a 0) (b init)) (if (< a count) (loop (+ 1 a) (apply f a b)) b)))
+
+  (define (sp-sample-align f update-f x width . custom)
+    "procedure procedure integer integer any ... -> (result-value . (x width custom ...))
+     f :: x width custom ... -> (result custom ...)
+     update-f :: width custom ... -> (width custom ...)
+     f is called with the current x value that increases by one with each call, width and custom values.
+     update-f is called after width number of calls to update or reset the width and custom values"
+    (apply
+      (l (x width . custom)
+        (apply (l (result . custom) (pairs result x width custom)) (apply f x width custom)))
+      (if (< x width) (apply list (+ 1 x) width custom)
+        (apply list 1 (apply update-f width custom)))))
+
+  (define (sp-sample-align-list size f update-f . custom)
+    "calls sp-sample-align size times and returns the results in a list.
+     example:
+     (sp-sample-align-list sample-rate
+       (l (x w h . a) (pairs h h a))
+       (l (w h . a) (pairs (random-between 1 8) (random-between 0 200) a)) 0.0)"
+    (reverse
+      (first
+        (fold-integers* size
+          (l (x samples state)
+            (apply (l (result . state) (list (pair result samples) state))
+              (apply sp-sample-align f update-f state)))
+          null (pair 0 (apply update-f 0 custom)))))))
