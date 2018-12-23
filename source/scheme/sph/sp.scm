@@ -1,10 +1,15 @@
 (library (sph sp)
   (export
+    differences
     f32vector-sum
     f64-nearly-equal?
     f64vector-sum
     sp-alsa-open
+    sp-asymmetric-moving
     sp-asymmetric-moving-average
+    sp-asymmetric-moving-median
+    sp-asymmetric-moving-out
+    sp-change-limiter
     sp-clip~
     sp-convolution-filter!
     sp-convolve
@@ -92,6 +97,7 @@
   (import
     (guile)
     (rnrs bytevectors)
+    (rnrs sorting)
     (sph)
     (sph list)
     (sph math)
@@ -525,12 +531,58 @@
       (pair null null) points
       (if (and state (= (length points) (length state))) state (make-list (length points) #f))))
 
+  (define (differences a)
+    "return a list of differences between each two subsequent values in a given list.
+     result length is (length a) minus one.
+     example: (differences (list 1 3 7 8 6)) -> (2 4 1 -2)"
+    (pair-fold-right
+      (l (a result) (if (null? (tail a)) result (pair (- (first (tail a)) (first a)) result))) null a))
+
+  (define (sp-asymmetric-moving f current-value width state)
+    "procedure real integer list -> (any:result-value . state)
+     f :: current-value (previous-value ...) -> any
+     apply f with the current value and previous input values and return
+     a pair with the result of calling f and the state for the next call.
+     width must be greater than zero.
+     state can be the empty list for the first call"
+    (pair (f current-value state)
+      (pair current-value (if (< (length state) width) state (drop-right state 1)))))
+
+  (define (sp-asymmetric-moving-out f current-value width state)
+    "procedure real integer (real:previous-value ...) -> (any:result-value previous-value ...):state
+     like sp-asymmetric-moving but f is called with previous output values"
+    (pair (f current-value state) (if (< (length state) width) state (drop-right state 1))))
+
   (define (sp-asymmetric-moving-average current-value width state)
     "real integer list -> (result-value . state)
-     a moving average filter that does not consider values that follow the current one.
+     a moving average filter that only uses the current and past values.
      the longer the width, the more calls with a higher value it takes to reach the higher value"
-    (let*
-      ( (state
-          (if (> width (length state)) (append state (make-list (- width (length state)) 0)) state))
-        (state (pair current-value (drop-right state 1))))
-      (pair (/ (apply sp-float-sum state) width) state))))
+    (sp-asymmetric-moving
+      (l (current previous)
+        (/ (apply sp-float-sum (pair current previous)) (+ 1 (length previous))))
+      current-value width state))
+
+  (define (sp-asymmetric-moving-median current-value width state)
+    "real integer list -> (result-value . state)
+     a moving average filter that only uses the current and past values.
+     the longer the width, the more calls with a higher value it takes to reach the higher value"
+    (sp-asymmetric-moving
+      (l (current previous)
+        (let* ((sorted (list-sort < (pair current previous))) (size (length sorted)))
+          (if (odd? size) (list-ref sorted (/ (- size 1) 2))
+            (let ((index-a (- (/ size 2) 1)) (index-b (/ size 2)))
+              (/ (+ (list-ref sorted index-a) (list-ref sorted index-b)) 2)))))
+      current-value width state))
+
+  (define (sp-change-limiter current-value width max-factor state)
+    "real integer real list -> (real:result-value real ...):state
+     prevents change from being greater than +- max-factor times the average of previous differences between result values.
+     state can be the empty list for the first call"
+    (sp-asymmetric-moving-out
+      (l (current previous)
+        (if (< (length previous) 2) current
+          (let*
+            ( (average-change (/ (abs (apply + (differences previous))) (- (length previous) 1)))
+              (max-change (* max-factor average-change)))
+            (max (min (+ max-change (first previous)) current) (- (first previous) max-change)))))
+      current-value width state)))
