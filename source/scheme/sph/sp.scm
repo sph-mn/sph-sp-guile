@@ -4,7 +4,6 @@
     f32vector-sum
     f64-nearly-equal?
     f64vector-sum
-    fold-integers*
     sp-alsa-open
     sp-asymmetric-moving
     sp-asymmetric-moving-average
@@ -66,6 +65,7 @@
     sp-sample-align-list
     sp-sample-count->duration
     sp-sample-format
+    sp-sample-sum
     sp-samples->list
     sp-samples-copy
     sp-samples-copy-zero
@@ -299,16 +299,12 @@
   (define (sp-sines~ offset . freq)
     "number:radians number:radians-per-s ... -> real:0..1:sample
      get a value for a sum of sines of all specified frequencies with
-     linearly decreasing amplitude per added sine"
+     decreasing amplitude per added sine"
     (apply + (map-with-index (l (index a) (/ (sp-sine~ offset a) (+ 1 index))) freq)))
 
   (define* (sp-noise-uniform~ #:optional (state *random-state*)) (- (* 2 (random:uniform state)) 1))
   (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
   (define* (sp-noise-normal~ #:optional (state *random-state*)) (- (* 2 (random:normal state)) 1))
-
-  (define (sp-fold-integers start end f . states)
-    (let loop ((index start) (states states))
-      (if (< index end) (loop (+ 1 index) (apply f index states)) states)))
 
   (define (sp-segment size channel-count f . states)
     "integer integer false/procedure:{index states ... -> number/vector} -> (#(vector:channel ...) . states)
@@ -340,8 +336,7 @@
      sample-f :: env offset:sample-count custom ... -> (sample-value any:state-value ...)"
     (let*
       ((sample-duration (/ 1 sample-rate)) (env (vector sample-rate sample-duration channel-count)))
-      (apply sp-fold-integers 0
-        duration
+      (apply sp-fold-integers duration
         (l (offset . states)
           (apply segment-f env
             offset
@@ -505,6 +500,7 @@
     (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y)))
 
   (define sp-float-sum float-sum)
+  (define sp-sample-sum float-sum)
   (define (sp-rads->hz radians-per-second) "real -> real:hertz" (/ radians-per-second (* 2 sp-pi)))
   (define (sp-hz->rads hertz) "real -> real:radians-per-second" (* hertz 2 sp-pi))
 
@@ -590,7 +586,7 @@
             (max (min (+ max-change (first previous)) current) (- (first previous) max-change)))))
       current-value width state))
 
-  (define (fold-integers* count f . init)
+  (define (sp-fold-integers count f . init)
     "integer procedure any ... -> (any ...)
      f :: integer any:custom ... -> (any:custom ...)
      fold over integers from 0 to count minus 1 with zero or more separate state variables"
@@ -616,7 +612,7 @@
        (l (w h . a) (pairs (random-between 1 8) (random-between 0 200) a)) 0.0)"
     (reverse
       (first
-        (fold-integers* size
+        (sp-fold-integers size
           (l (x samples state)
             (apply (l (result . state) (list (pair result samples) state))
               (apply sp-sample-align f update-f state)))
