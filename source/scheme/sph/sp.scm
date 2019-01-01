@@ -74,6 +74,7 @@
     sp-samples-length
     sp-samples-map
     sp-samples-map!
+    sp-samples-map-with-index
     sp-samples-new
     sp-samples-ref
     sp-samples-set!
@@ -115,7 +116,7 @@
   (define sp-pi (* 4 (atan 1)))
 
   (define-syntax-rule (sp-samples-new-f uv-create uv-make)
-    ; a procedure similar to vector-make except that the fill value can be a procedure used to set the elements
+    ; a procedure similar to vector-make except that the fill value can be a procedure {index -> value} used to set the elements
     (l (length value) (if (procedure? value) (uv-create length value) (uv-make length value))))
 
   (define (sp-sinc a) "the normalised sinc function"
@@ -142,6 +143,11 @@
     (case sp-sample-format
       ((f64) f64vector-map)
       ((f32) f32vector-map)))
+
+  (define sp-samples-map-with-index
+    (case sp-sample-format
+      ((f64) f64vector-map-with-index)
+      ((f32) f32vector-map-with-index)))
 
   (define sp-samples-map!
     (case sp-sample-format
@@ -238,11 +244,12 @@
     (let (out (sp-samples-copy-zero in))
       (pair out (sp-windowed-sinc-lp-hp! out in cutoff transition is-high-pass state))))
 
-  (define* (sp-windowed-sinc-bp-br in cutoff-l cutoff-h transition is-reject state)
+  (define* (sp-windowed-sinc-bp-br in cutoff-l cutoff-h transition-l transition-h is-reject state)
     "samples real real real boolean false/convolution-filter-state -> samples
      state is still eventually going to be modified"
     (let (out (sp-samples-copy-zero in))
-      (pair out (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition is-reject state))))
+      (pair out
+        (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h is-reject state))))
 
   (define* (sp-plot-samples-display-file file-path #:key (type (q lines)) (color "blue"))
     (execute "gnuplot" "--persist"
