@@ -17,6 +17,7 @@
     sp-duration->sample-count
     sp-factor->rads
     sp-fftr
+    sp-fftr-with-overlap
     sp-fftri
     sp-file-open
     sp-filter-bank
@@ -26,6 +27,7 @@
     sp-hz->rads
     sp-moving-average
     sp-moving-average!
+    sp-noise-band
     sp-noise-exponential~
     sp-noise-normal~
     sp-noise-uniform~
@@ -623,4 +625,37 @@
           (l (x samples state)
             (apply (l (result . state) (list (pair result samples) state))
               (apply sp-sample-align f update-f state)))
-          null (pair 0 (apply update-f 0 custom)))))))
+          null (pair 0 (apply update-f 0 custom))))))
+
+  (define (sp-fftr-with-overlap a b)
+    "false/samples false/samples -> (samples ...)
+     calculate a fast fourier transform on real numbers from a and b.
+     use a blackman window on the segment beforehand and calculate another fftr
+     for an overlapping segment between segment a and b if b is not false and large enough.
+     the fftr results are calculated with sp-fftr, so they contain complex numbers with real and imaginary part alternated.
+     overlap factor taken from http://edoc.mpg.de/395068"
+    (let*
+      ( (a (or a b)) (b (and a b)) (a-length (sp-samples-length a))
+        (result-a
+          (sp-fftr
+            (sp-samples-map-with-index (l (index a) (* a (sp-window-blackman index a-length))) a))))
+      (if (not b) result-a
+        (let*
+          ( (overlap-length (inexact->exact (round (* a-length 0.661))))
+            (b-length (sp-samples-length b)) (ab-length (* 2 overlap-length)))
+          (if (> overlap-length b-length) result-a
+            (sp-fftr
+              (sp-samples-new ab-length
+                (l (index)
+                  (let (a-index (+ (- a-length overlap-length) index))
+                    (*
+                      (if (< a-index a-length) (sp-samples-ref a a-index)
+                        (sp-samples-ref b (- index overlap-length)))
+                      (sp-window-blackman index ab-length)))))))))))
+
+  (define*
+    (sp-noise-band size center width state #:key (transition 0.08) (noise-f sp-noise-uniform~))
+    "get a sample vector with noise in a specific frequency band.
+     center, width and transition are as a fraction of the sample rate from 0 to 0.5"
+    (sp-windowed-sinc-bp-br (sp-samples-new size (l (index) (noise-f))) (- center (/ width 2))
+      (+ center (/ width 2)) transition transition #f state)))
