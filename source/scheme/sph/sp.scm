@@ -15,6 +15,7 @@
     sp-convolve
     sp-convolve!
     sp-duration->sample-count
+    sp-samples-apply-blackman-window
     sp-factor->rads
     sp-fftr
     sp-fftr-with-overlap
@@ -119,7 +120,8 @@
 
   (define-syntax-rule (sp-samples-new-f uv-create uv-make)
     ; a procedure similar to vector-make except that the fill value can be a procedure {index -> value} used to set the elements
-    (l (length value) (if (procedure? value) (uv-create length value) (uv-make length value))))
+    (l* (length #:optional (value 0))
+      (if (procedure? value) (uv-create length value) (uv-make length value))))
 
   (define (sp-sinc a) "the normalised sinc function"
     ; re-implemented in scheme
@@ -291,11 +293,15 @@
 
   (define sp-plot-fftr-display-file sp-plot-samples-display-file)
 
+  (define (sp-samples-apply-blackman-window a)
+    (let (a-length (sp-samples-length a))
+      (sp-samples-map-with-index (l (index a) (* a (sp-window-blackman index a-length))) a)))
+
   (define (sp-plot-fftr->file a path)
     (call-with-output-file path
       (l (port)
         (each-with-index (l (index a) (and (< 0 index) (even? index) (display-line a port)))
-          (sp-samples->list (sp-fftr a))))))
+          (sp-samples->list (sp-fftr (sp-samples-apply-blackman-window a)))))))
 
   (define (sp-plot-fftr a)
     (let (path (tmpnam)) (sp-plot-fftr->file a path) (sp-plot-fftr-display-file path)))
