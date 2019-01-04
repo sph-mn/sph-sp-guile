@@ -226,7 +226,7 @@
     scm-output SCM)
   (set
     input-len (scm->sp-samples-length scm-input)
-    output-len (* 2 (sp-fftr-output-len input-len))
+    output-len (sp-fftr-output-len input-len)
     scm-output (scm-c-make-sp-samples output-len))
   (status-require (sp-fftr (scm->sp-samples scm-input) input-len (scm->sp-samples scm-output)))
   (label exit

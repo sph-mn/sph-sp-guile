@@ -150,7 +150,7 @@ SCM scm_sp_fftr(SCM scm_input) {
   sp_sample_count_t output_len;
   SCM scm_output;
   input_len = scm_to_sp_samples_length(scm_input);
-  output_len = (2 * sp_fftr_output_len(input_len));
+  output_len = sp_fftr_output_len(input_len);
   scm_output = scm_c_make_sp_samples(output_len);
   status_require((sp_fftr((scm_to_sp_samples(scm_input)), input_len, (scm_to_sp_samples(scm_output)))));
 exit:

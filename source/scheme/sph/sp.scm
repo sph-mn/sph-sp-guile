@@ -15,14 +15,15 @@
     sp-convolve
     sp-convolve!
     sp-duration->sample-count
-    sp-samples-apply-blackman-window
     sp-factor->rads
+    sp-fft-resynth
     sp-fftr
-    sp-fftr-with-overlap
     sp-fftri
     sp-file-open
     sp-filter-bank
     sp-float-sum
+    sp-fold-file
+    sp-fold-file-overlap
     sp-fold-integers
     sp-generate
     sp-hz->rads
@@ -32,6 +33,7 @@
     sp-noise-exponential~
     sp-noise-normal~
     sp-noise-uniform~
+    sp-overlap
     sp-path
     sp-path-new
     sp-path-new-p
@@ -70,14 +72,18 @@
     sp-sample-format
     sp-sample-sum
     sp-samples->list
+    sp-samples-apply-blackman-window
     sp-samples-copy
     sp-samples-copy-zero
     sp-samples-copy-zero*
+    sp-samples-divide
     sp-samples-from-list
     sp-samples-length
     sp-samples-map
     sp-samples-map!
+    sp-samples-map-with
     sp-samples-map-with-index
+    sp-samples-multiply
     sp-samples-new
     sp-samples-ref
     sp-samples-set!
@@ -88,10 +94,12 @@
     sp-sinc
     sp-sine!
     sp-sine-lq!
+    sp-sine-of-width
     sp-sines~
     sp-sine~
     sp-spectral-inversion
     sp-spectral-reversal
+    sp-spectrum
     sp-triangle
     sp-triangle~
     sp-window-blackman
@@ -147,6 +155,11 @@
     (case sp-sample-format
       ((f64) f64vector-map)
       ((f32) f32vector-map)))
+
+  (define sp-samples-map-with
+    (case sp-sample-format
+      ((f64) f64vector-map-with)
+      ((f32) f32vector-map-with)))
 
   (define sp-samples-map-with-index
     (case sp-sample-format
@@ -633,35 +646,77 @@
               (apply sp-sample-align f update-f state)))
           null (pair 0 (apply update-f 0 custom))))))
 
-  (define (sp-fftr-with-overlap a b)
-    "false/samples false/samples -> (samples ...)
-     calculate a fast fourier transform on real numbers from a and b.
-     use a blackman window on the segment beforehand and calculate another fftr
-     for an overlapping segment between segment a and b if b is not false and large enough.
-     the fftr results are calculated with sp-fftr, so they contain complex numbers with real and imaginary part alternated.
-     overlap factor taken from http://edoc.mpg.de/395068"
-    (let*
-      ( (a (or a b)) (b (and a b)) (a-length (sp-samples-length a))
-        (result-a
-          (sp-fftr
-            (sp-samples-map-with-index (l (index a) (* a (sp-window-blackman index a-length))) a))))
-      (if (not b) result-a
-        (let*
-          ( (overlap-length (inexact->exact (round (* a-length 0.661))))
-            (b-length (sp-samples-length b)) (ab-length (* 2 overlap-length)))
-          (if (> overlap-length b-length) result-a
-            (sp-fftr
-              (sp-samples-new ab-length
-                (l (index)
-                  (let (a-index (+ (- a-length overlap-length) index))
-                    (*
-                      (if (< a-index a-length) (sp-samples-ref a a-index)
-                        (sp-samples-ref b (- index overlap-length)))
-                      (sp-window-blackman index ab-length)))))))))))
+  (define (sp-spectrum a)
+    "apply fft on samples after applying a blackman window and return only the real valued part"
+    (sp-samples-from-list
+      (map-slice 2 (l (a b) a) (sp-samples->list (sp-fftr (sp-samples-apply-blackman-window a))))))
+
+  (define* (sp-overlap a b #:optional (overlap-factor 0.5))
+    "false/samples false/samples [real] -> false/samples
+     return an overlapping portion between a and b if neither is false and both are large enough.
+     otherwise return false"
+    (and a b
+      (let*
+        ( (a-length (sp-samples-length a)) (b-length (sp-samples-length b))
+          (overlap-length (inexact->exact (round (* a-length overlap-factor))))
+          (ab-length (* 2 overlap-length)))
+        (and (<= overlap-length b-length)
+          (sp-samples-new ab-length
+            (l (index)
+              (let (a-index (+ (- a-length overlap-length) index))
+                (if (< a-index a-length) (sp-samples-ref a a-index)
+                  (sp-samples-ref b (- index overlap-length))))))))))
 
   (define*
     (sp-noise-band size center width state #:key (transition 0.08) (noise-f sp-noise-uniform~))
     "get a sample vector with noise in a specific frequency band.
      center, width and transition are as a fraction of the sample rate from 0 to 0.5"
     (sp-windowed-sinc-bp-br (sp-samples-new size (l (index) (noise-f))) (- center (/ width 2))
-      (+ center (/ width 2)) transition transition #f state)))
+      (+ center (/ width 2)) transition transition #f state))
+
+  (define (sp-sine-of-width x width)
+    "return a value for a repeating sine with given sample width at sample offset x"
+    (sin (* x (/ (* 2 sp-pi) width))))
+
+  (define (sp-samples-divide a divisor) (sp-samples-map (l (b) (if (zero? b) b (/ b divisor))) a))
+  (define (sp-samples-multiply a factor) (sp-samples-map (l (b) (* b factor)) a))
+
+  (define (sp-fft-resynth f a)
+    "map the frequency domain of time domain samples.
+     call f with the result of a fft on samples and pass the result to fftri
+     and scale output to match input.
+     example
+     (define samples (sp-fft-resynth (lambda (a) (sp-samples-set! a 300 500) a) sine))"
+    (sp-samples-divide (sp-fftri (f (sp-fftr a))) (sp-samples-length a)))
+
+  (define (sp-fold-file f segment-size file-name . custom)
+    "procedure integer string any ... -> any
+     f :: #(samples ...):channels custom ... -> custom
+     fold over sample vectors read from file"
+    (let*
+      ( (input (sp-file-open file-name sp-port-mode-read))
+        (result
+          (let loop ((a (sp-port-read input segment-size)))
+            (if (vector? a)
+              (apply f a
+                (if (= segment-size (sp-samples-length (vector-first a)))
+                  (loop (sp-port-read input segment-size)) custom))
+              custom))))
+      (sp-port-close input) result))
+
+  (define (sp-fold-file-overlap f segment-size overlap-factor path . custom)
+    "procedure integer real string any ... -> any
+     f :: #(samples:channel ...) any ... -> (any ...)
+     like sp-fold-file but additionally maps sample arrays build
+     from overlap-factor number of samples from the end of each previous
+     and beginning of each current sample array"
+    (tail
+      (apply sp-fold-file
+        (l (a previous . custom)
+          (let
+            (overlap
+              (and (not (null? previous))
+                (vector-map (l (a b) (sp-overlap a b overlap-factor)) (first previous) a)))
+            (pair (pair a previous)
+              (if overlap (apply f a (apply f overlap custom)) (apply f a custom)))))
+        segment-size path null custom))))
