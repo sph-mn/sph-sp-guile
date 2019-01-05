@@ -49,6 +49,9 @@
     sp-plot-samples-display-file
     sp-plot-segments
     sp-plot-segments->file
+    sp-plot-spectrum
+    sp-plot-spectrum->file
+    sp-plot-spectrum-display-file
     sp-port-channel-count
     sp-port-close
     sp-port-input?
@@ -73,6 +76,7 @@
     sp-sample-sum
     sp-samples->list
     sp-samples-apply-blackman-window
+    sp-samples-apply-hanning-window
     sp-samples-copy
     sp-samples-copy-zero
     sp-samples-copy-zero*
@@ -103,6 +107,7 @@
     sp-triangle
     sp-triangle~
     sp-window-blackman
+    sp-window-hanning
     sp-windowed-sinc-bp-br
     sp-windowed-sinc-bp-br!
     sp-windowed-sinc-bp-br-ir
@@ -304,17 +309,35 @@
     (let (path (tmpnam)) (sp-plot-segments->file a path channel)
       (sp-plot-samples-display-file path)))
 
-  (define sp-plot-fftr-display-file sp-plot-samples-display-file)
+  (define (sp-window-hanning offset size) (* 0.5 (- 1 (cos (/ (* 2 sp-pi offset) (- size 1))))))
+
+  (define (sp-samples-apply-hanning-window a)
+    (let (a-length (sp-samples-length a))
+      (sp-samples-map-with-index (l (index a) (* a (sp-window-hanning index a-length))) a)))
 
   (define (sp-samples-apply-blackman-window a)
     (let (a-length (sp-samples-length a))
       (sp-samples-map-with-index (l (index a) (* a (sp-window-blackman index a-length))) a)))
 
-  (define (sp-plot-fftr->file a path)
+  (define sp-plot-spectrum-display-file sp-plot-samples-display-file)
+
+  (define (sp-plot-spectrum->file a path)
+    "apply sp-spectrum on \"a\" and write the result to file at path"
     (call-with-output-file path
-      (l (port)
-        (each-with-index (l (index a) (and (< 0 index) (even? index) (display-line a port)))
-          (sp-samples->list (sp-fftr (sp-samples-apply-blackman-window a)))))))
+      (l (port) (vector-each (l (a) (display-line a port)) (sp-spectrum a)))))
+
+  (define (sp-plot-spectrum a)
+    (let (path (tmpnam)) (sp-plot-spectrum->file a path) (sp-plot-fftr-display-file path)))
+
+  (define (sp-spectrum a) "samples -> #(real ...)"
+    (vector-map (l (b) (* 2 (/ (magnitude b) (sp-samples-length a)))) (sp-fftr a)))
+
+  (define sp-plot-fftr-display-file sp-plot-samples-display-file)
+
+  (define (sp-plot-fftr->file a path)
+    "write only the real part of a sp-fftr result to file at path"
+    (call-with-output-file path
+      (l (port) (vector-each (l (a) (display-line (real-part a) port)) a))))
 
   (define (sp-plot-fftr a)
     (let (path (tmpnam)) (sp-plot-fftr->file a path) (sp-plot-fftr-display-file path)))
@@ -646,11 +669,6 @@
               (apply sp-sample-align f update-f state)))
           null (pair 0 (apply update-f 0 custom))))))
 
-  (define (sp-spectrum a)
-    "apply fft on samples after applying a blackman window and return only the real valued part"
-    (sp-samples-from-list
-      (map-slice 2 (l (a b) a) (sp-samples->list (sp-fftr (sp-samples-apply-blackman-window a))))))
-
   (define* (sp-overlap a b #:optional (overlap-factor 0.5))
     "false/samples false/samples [real] -> false/samples
      return an overlapping portion between a and b if neither is false and both are large enough.
@@ -686,7 +704,7 @@
      call f with the result of a fft on samples and pass the result to fftri
      and scale output to match input.
      example
-     (define samples (sp-fft-resynth (lambda (a) (sp-samples-set! a 300 500) a) sine))"
+     (define samples (sp-fft-resynth (lambda (a) (vector-set! a 300 (make-rectangular 500 0)) a) sine))"
     (sp-samples-divide (sp-fftri (f (sp-fftr a))) (sp-samples-length a)))
 
   (define (sp-fold-file f segment-size file-name . custom)

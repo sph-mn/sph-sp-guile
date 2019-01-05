@@ -221,30 +221,56 @@
 (define (scm-sp-fftr scm-input) (SCM SCM)
   status-declare
   (declare
+    i sp-sample-count-t
     input-len sp-sample-count-t
     output-len sp-sample-count-t
+    output sp-sample-t*
+    scm-c-output-len sp-sample-count-t
     scm-output SCM)
+  (scm-dynwind-begin 0)
   (set
+    output 0
     input-len (scm->sp-samples-length scm-input)
     output-len (sp-fftr-output-len input-len)
-    scm-output (scm-c-make-sp-samples output-len))
-  (status-require (sp-fftr (scm->sp-samples scm-input) input-len (scm->sp-samples scm-output)))
+    scm-c-output-len (/ output-len 2)
+    scm-output (scm-c-make-vector scm-c-output-len SCM-BOOL-F))
+  (status-require (sph-helper-malloc (* output-len (sizeof sp-sample-t)) &output))
+  (scm-dynwind-free output)
+  (status-require (sp-fftr (scm->sp-samples scm-input) input-len output))
+  (sc-comment "convert to scheme complex numbers")
+  (for ((set i 0) (< i scm-c-output-len) (set i (+ 1 i)))
+    (scm-c-vector-set!
+      scm-output
+      i (scm-c-make-rectangular (array-get output (* 2 i)) (array-get output (+ 1 (* 2 i))))))
   (label exit
-    (scm-from-status-return scm-output)))
+    (scm-from-status-dynwind-end-return scm-output)))
 
 (define (scm-sp-fftri scm-input) (SCM SCM)
+  "scm-sp-fftri takes scheme complex numbers, sp-fftri takes complex numbers as alternated real/imaginary values in an array"
   status-declare
   (declare
     output-len sp-sample-count-t
-    scm-output SCM)
+    scm-output SCM
+    scm-c-input-len sp-sample-count-t
+    i sp-sample-count-t
+    input sp-sample-t*
+    input-len sp-sample-count-t)
+  (scm-dynwind-begin 0)
   (set
-    output-len (sp-fftri-output-len (scm->sp-samples-length scm-input))
+    scm-c-input-len (scm-c-vector-length scm-input)
+    input-len (* 2 scm-c-input-len)
+    output-len (sp-fftri-output-len input-len)
     scm-output (scm-c-make-sp-samples output-len))
-  (status-require
-    (sp-fftri
-      (scm->sp-samples scm-input) (scm->sp-samples-length scm-input) (scm->sp-samples scm-output)))
+  (sc-comment "convert from scheme complex numbers to alternated array")
+  (status-require (sph-helper-malloc (* input-len (sizeof sp-sample-t)) &input))
+  (scm-dynwind-free input)
+  (for ((set i 0) (< i scm-c-input-len) (set i (+ 1 i)))
+    (set
+      (array-get input (* 2 i)) (scm->sp-sample (scm-real-part (scm-c-vector-ref scm-input i)))
+      (array-get input (+ 1 (* 2 i))) (scm->sp-sample (scm-imag-part (scm-c-vector-ref scm-input i)))))
+  (status-require (sp-fftri input input-len (scm->sp-samples scm-output)))
   (label exit
-    (scm-from-status-return scm-output)))
+    (scm-from-status-dynwind-end-return scm-output)))
 
 (define (scm-sp-alsa-open scm-device-name scm-mode scm-channel-count scm-sample-rate scm-latency)
   (SCM SCM SCM SCM SCM SCM)

@@ -146,25 +146,52 @@ exit:
 };
 SCM scm_sp_fftr(SCM scm_input) {
   status_declare;
+  sp_sample_count_t i;
   sp_sample_count_t input_len;
   sp_sample_count_t output_len;
+  sp_sample_t* output;
+  sp_sample_count_t scm_c_output_len;
   SCM scm_output;
+  scm_dynwind_begin(0);
+  output = 0;
   input_len = scm_to_sp_samples_length(scm_input);
   output_len = sp_fftr_output_len(input_len);
-  scm_output = scm_c_make_sp_samples(output_len);
-  status_require((sp_fftr((scm_to_sp_samples(scm_input)), input_len, (scm_to_sp_samples(scm_output)))));
+  scm_c_output_len = (output_len / 2);
+  scm_output = scm_c_make_vector(scm_c_output_len, SCM_BOOL_F);
+  status_require((sph_helper_malloc((output_len * sizeof(sp_sample_t)), (&output))));
+  scm_dynwind_free(output);
+  status_require((sp_fftr((scm_to_sp_samples(scm_input)), input_len, output)));
+  /* convert to scheme complex numbers */
+  for (i = 0; (i < scm_c_output_len); i = (1 + i)) {
+    scm_c_vector_set_x(scm_output, i, (scm_c_make_rectangular((output[(2 * i)]), (output[(1 + (2 * i))]))));
+  };
 exit:
-  scm_from_status_return(scm_output);
+  scm_from_status_dynwind_end_return(scm_output);
 };
+/** scm-sp-fftri takes scheme complex numbers, sp-fftri takes complex numbers as alternated real/imaginary values in an array */
 SCM scm_sp_fftri(SCM scm_input) {
   status_declare;
   sp_sample_count_t output_len;
   SCM scm_output;
-  output_len = sp_fftri_output_len((scm_to_sp_samples_length(scm_input)));
+  sp_sample_count_t scm_c_input_len;
+  sp_sample_count_t i;
+  sp_sample_t* input;
+  sp_sample_count_t input_len;
+  scm_dynwind_begin(0);
+  scm_c_input_len = scm_c_vector_length(scm_input);
+  input_len = (2 * scm_c_input_len);
+  output_len = sp_fftri_output_len(input_len);
   scm_output = scm_c_make_sp_samples(output_len);
-  status_require((sp_fftri((scm_to_sp_samples(scm_input)), (scm_to_sp_samples_length(scm_input)), (scm_to_sp_samples(scm_output)))));
+  /* convert from scheme complex numbers to alternated array */
+  status_require((sph_helper_malloc((input_len * sizeof(sp_sample_t)), (&input))));
+  scm_dynwind_free(input);
+  for (i = 0; (i < scm_c_input_len); i = (1 + i)) {
+    input[(2 * i)] = scm_to_sp_sample((scm_real_part((scm_c_vector_ref(scm_input, i)))));
+    input[(1 + (2 * i))] = scm_to_sp_sample((scm_imag_part((scm_c_vector_ref(scm_input, i)))));
+  };
+  status_require((sp_fftri(input, input_len, (scm_to_sp_samples(scm_output)))));
 exit:
-  scm_from_status_return(scm_output);
+  scm_from_status_dynwind_end_return(scm_output);
 };
 SCM scm_sp_alsa_open(SCM scm_device_name, SCM scm_mode, SCM scm_channel_count, SCM scm_sample_rate, SCM scm_latency) {
   status_declare;

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 optimisation=0
-warnings="-Wunused-label -Wunused-value -Wunused-variable"
+#warnings="-Wunused-label -Wunused-value -Wunused-variable"
 gcc_options="-Wfatal-errors $warnings -std=c11 -O$optimisation $(guile-config link)"
 target_dir=temp
 target="$target_dir/libguile-sph-sp.so"
