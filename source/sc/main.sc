@@ -490,7 +490,7 @@
     0
     0
     scm-sp-fftr
-    "sample-vector:values-at-times -> sample-vector:frequencies
+    "sample-vector:values-at-times -> #(complex ...):frequencies
     discrete fourier transform on the input data. only the real part")
   (scm-c-define-procedure-c
     "sp-fftri"
@@ -498,7 +498,7 @@
     0
     0
     scm-sp-fftri
-    "sample-vector:frequencies -> sample-vector:values-at-times
+    "#(complex ...):frequencies -> sample-vector:values-at-times
     inverse discrete fourier transform on the input data. only the real part")
   (scm-c-define-procedure-c
     "sp-alsa-open"

@@ -707,12 +707,12 @@
      (define samples (sp-fft-resynth (lambda (a) (vector-set! a 300 (make-rectangular 500 0)) a) sine))"
     (sp-samples-divide (sp-fftri (f (sp-fftr a))) (sp-samples-length a)))
 
-  (define (sp-fold-file f segment-size file-name . custom)
+  (define (sp-fold-file f segment-size path . custom)
     "procedure integer string any ... -> any
      f :: #(samples ...):channels custom ... -> custom
      fold over sample vectors read from file"
     (let*
-      ( (input (sp-file-open file-name sp-port-mode-read))
+      ( (input (sp-file-open path sp-port-mode-read))
         (result
           (let loop ((a (sp-port-read input segment-size)))
             (if (vector? a)
