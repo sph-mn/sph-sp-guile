@@ -81,8 +81,10 @@
     sp-samples-copy-zero
     sp-samples-copy-zero*
     sp-samples-divide
+    sp-samples-extract
     sp-samples-from-list
     sp-samples-length
+    sp-samples-list-add-offsets
     sp-samples-map
     sp-samples-map!
     sp-samples-map-with
@@ -91,6 +93,7 @@
     sp-samples-new
     sp-samples-ref
     sp-samples-set!
+    sp-samples-split
     sp-samples?
     sp-segment
     sp-segments->alsa
@@ -737,4 +740,40 @@
                 (vector-map (l (a b) (sp-overlap a b overlap-factor)) (first previous) a)))
             (pair (pair a previous)
               (if overlap (apply f a (apply f overlap custom)) (apply f a custom)))))
-        segment-size path null custom))))
+        segment-size path null custom)))
+
+  (define* (sp-samples-extract b start count #:optional padding)
+    "integer integer samples [boolean] -> samples
+     extract a continuous portion from indices start to end both inclusively from a samples vector.
+     start must be in bounds.
+     if end is out of bounds then return a shorter or zero padded vector,
+     depending on if padding is false or true respectively.
+     count must be greater than zero"
+    (let ((b-size (sp-samples-length b)))
+      (if (< (+ start count) b-size)
+        (sp-samples-new count (l (index) (sp-samples-ref b (+ start index))))
+        (if padding
+          (sp-samples-new count
+            (l (index)
+              (let (index (+ start index)) (if (< index b-size) (sp-samples-ref b index) 0))))
+          (sp-samples-new (- b-size start) (l (index) (sp-samples-ref b (+ start index))))))))
+
+  (define (sp-samples-split b count)
+    "samples integer -> (samples ...)
+     splits a sample vector into count multiple sample vectors.
+     if (input-size / count) is not an integer then it is rounded to the next higher integer
+     and the part sample vector is zero padded to be of equal size as all other parts"
+    (let* ((input-size (sp-samples-length b)) (part-size (ceiling (/ input-size count))))
+      (let loop ((index 0))
+        (if (< index input-size)
+          (pair (sp-samples-extract b index part-size #t) (loop (+ part-size index))) null))))
+
+  (define (sp-samples-list-add-offsets b start)
+    "(samples ...) [integer] -> ((sample-offset samples) ...)
+     map each samples vector in input to a pair with the cumulative sample
+     offset of the length of sample vectors starting from start.
+     for example a list with sample vector sizes 8 2 3 would create
+     a list ((0 samples) (8 samples) (10 samples))"
+    (let loop ((b b) (offset start))
+      (if (null? b) b
+        (pair (pair offset (first b)) (loop (tail b) (+ (sp-samples-length (first b)) offset)))))))
