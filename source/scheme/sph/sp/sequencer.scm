@@ -51,7 +51,8 @@
     "seq calls sample generating functions at customisable times, shares state values between them and
      mixes output values to create a single result. seq can return single sample values or sample arrays,
      this depends completely on the user supplied events-f and event-f functions.
-     time is counted in samples because seconds dont always map exactly to samples")
+     time is counted in samples because seconds dont always map exactly to samples; this is sometimes inconvenient but it is exact.
+     seq-state-rate is provided to access a sample-rate value if it has been passed to seq-state-new")
 
   (define seq-index-data (vector-accessor 1))
   (define seq-index-end (vector-accessor 2))

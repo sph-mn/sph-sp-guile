@@ -75,7 +75,7 @@ installed files
   (sp-segments->alsa result-segments sample-rate))
 ```
 
-sequencer usage example (tested 2018-10-04). three sines with different frequencies that start 0.5 seconds apart and last 0.5 seconds. this example assumes gnuplot is installed to display a plot of the result.
+sequencer usage example. three sines with different frequencies that start 150 samples apart and last at most 1000 samples. this example assumes gnuplot is installed to display a plot of the result.
 
 ```scheme
 (import (sph) (sph list) (sph vector) (sph sp) (sph sp sequencer))
@@ -93,9 +93,9 @@ sequencer usage example (tested 2018-10-04). three sines with different frequenc
 (define (events-f time end seq-state)
   "this returns a list of next event objects to register.
    events-f is called every (seq-state-duration seq-state) seconds.
-   this is so that not all events have to be created at once but can be returned near the time they
+   this is so that not all events have to be created at once but can be created near the time they
    are starting"
-     (list (seq-event a sound-a 0) (seq-event b sound-b 150) (seq-event c sound-c 400)))
+  (list (seq-event a sound-a 0) (seq-event b sound-b 150) (seq-event c sound-c 300)))
 
 (let*
   ( (seq-state (seq-state-new events-f))
