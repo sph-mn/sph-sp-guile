@@ -277,18 +277,22 @@
   status-declare
   (declare
     device-name uint8-t*
+    latency int32-t
     scm-result SCM
     port sp-port-t*)
   (scm-dynwind-begin 0)
-  (set device-name (scm->locale-string scm-device-name))
+  (set
+    device-name (scm->locale-string scm-device-name)
+    latency
+    (if* (scm-is-undefined scm-latency) -1
+      (scm->sp-sample-count scm-latency)))
   (scm-dynwind-free device-name)
   (set port (scm-gc-malloc-pointerless (sizeof sp-port-t) "sp-port"))
   (status-require
     (sp-alsa-open
       device-name
       (scm->uint8 scm-mode)
-      (scm->sp-channel-count scm-channel-count)
-      (scm->sp-sample-rate scm-sample-rate) (scm->sp-sample-count scm-latency) port))
+      (scm->sp-channel-count scm-channel-count) (scm->sp-sample-rate scm-sample-rate) latency port))
   (set scm-result (scm-from-sp-port port))
   (label exit
     (scm-from-status-dynwind-end-return scm-result)))
@@ -502,7 +506,7 @@
     inverse discrete fourier transform on the input data. only the real part")
   (scm-c-define-procedure-c
     "sp-alsa-open"
-    5 0 0 scm-sp-alsa-open "device-name mode channel-count sample-rate latency -> sp-port")
+    4 1 0 scm-sp-alsa-open "device-name mode channel-count sample-rate [latency] -> sp-port")
   (scm-c-define-procedure-c
     "sp-file-open" 2 2 0 scm-sp-file-open "path mode [channel-count sample-rate] -> sp-port")
   (scm-c-define-procedure-c "sp-port-close" 1 0 0 scm-sp-port-close "sp-port -> boolean")

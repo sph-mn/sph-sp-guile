@@ -43,40 +43,36 @@ installed files
 
 # usage
 ```scheme
-(import (sph sp))
-
-(define sample-rate 16000)
+(import (sph sp) (sph))
+(define sample-rate 44100)
 (define channel-count 1)
 
 ;-- basic io
-(define latency 4096)
-(define input-port? #f)
-(define dac (sp-alsa-open "default" input-port? channel-count sample-rate latency))
-(sp-port-write dac (list (f64vector 1 2 3 4)))
+(define dac (sp-alsa-open "default" sp-port-mode-write channel-count sample-rate))
+(sp-port-write dac (vector (f64vector 1 2 3 4)) 4)
 (sp-port-close dac)
 
-(define file (sp-file-open "tmp/sp-file.wav" channel-count sample-rate))
-(sp-port-write file (list (f64vector 1 2 3 4)))
+(define file (sp-file-open "/tmp/sp-file.wav" sp-port-mode-write channel-count sample-rate))
+; vector with one sample vector per channel
+(sp-port-write file (vector (f64vector 1 2 3 4)) 4)
 (sp-port-close file)
 
-;-- sp-generate
-
-(define time-start 0)
-(define duration-seconds 2)
-
+;-- sp-generate helper
 (let*
-  ( (result-states
-      (sp-generate sample-rate time-start duration-seconds
+  ( (duration-seconds 2)
+    (result-states
+      (sp-generate sample-rate channel-count duration-seconds
         ; segment-f - maps segments with samples eventually set by sample-f
-        (l (env time segment result . states)
-          (pair (pair segment result) states))
+        (lambda (env time segment result . states)
+          (cons (cons segment result) states))
         ; sample-f - sets samples in segments for time
-        (l (env time . states)
-          (pair (* 0.5 (sp-sine time)) states))
+        (lambda (env time . states)
+          (cons (* 0.5 (sp-sine~ time 100)) states))
         ; all following arguments are passed to segment-f/sample-f in "states"
         (list)))
-    (result-segments (reverse (first result-states))))
-  (sp-segments->alsa result-segments))
+    ; (#(f64vector:channel-samples ...) ...)
+    (result-segments (reverse (car result-states))))
+  (sp-segments->alsa result-segments sample-rate))
 ```
 
 sequencer usage example (tested 2018-10-04). three sines with different frequencies that start 0.5 seconds apart and last 0.5 seconds. this example assumes gnuplot is installed to display a plot of the result.

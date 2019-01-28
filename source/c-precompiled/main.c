@@ -196,13 +196,15 @@ exit:
 SCM scm_sp_alsa_open(SCM scm_device_name, SCM scm_mode, SCM scm_channel_count, SCM scm_sample_rate, SCM scm_latency) {
   status_declare;
   uint8_t* device_name;
+  int32_t latency;
   SCM scm_result;
   sp_port_t* port;
   scm_dynwind_begin(0);
   device_name = scm_to_locale_string(scm_device_name);
+  latency = (scm_is_undefined(scm_latency) ? -1 : scm_to_sp_sample_count(scm_latency));
   scm_dynwind_free(device_name);
   port = scm_gc_malloc_pointerless((sizeof(sp_port_t)), "sp-port");
-  status_require((sp_alsa_open(device_name, (scm_to_uint8(scm_mode)), (scm_to_sp_channel_count(scm_channel_count)), (scm_to_sp_sample_rate(scm_sample_rate)), (scm_to_sp_sample_count(scm_latency)), port)));
+  status_require((sp_alsa_open(device_name, (scm_to_uint8(scm_mode)), (scm_to_sp_channel_count(scm_channel_count)), (scm_to_sp_sample_rate(scm_sample_rate)), latency, port)));
   scm_result = scm_from_sp_port(port);
 exit:
   scm_from_status_dynwind_end_return(scm_result);
@@ -308,9 +310,9 @@ void sp_guile_init() {
   scm_c_define_procedure_c("sp-windowed-sinc-bp-br-ir", 5, 0, 0, scm_sp_windowed_sinc_bp_br_ir, ("real real real real boolean -> samples\n    cutoff-l cutoff-h transition-l transition-h is-reject -> ir\n    get an impulse response kernel for a band-pass or band-reject filter"));
   scm_c_define_procedure_c("sp-convolution-filter!", 5, 0, 0, scm_sp_convolution_filter_x, ("out in ir-f ir-f-arguments state -> state\n     samples samples procedure list sp-convolution-filter-state -> sp-convolution-filter-state"));
   scm_c_define_procedure_c("sp-moving-average!", 5, 2, 0, scm_sp_moving_average_x, ("result source previous next radius [start end] -> unspecified\n    sample-vector sample-vector sample-vector sample-vector integer integer integer [integer]"));
-  scm_c_define_procedure_c("sp-fftr", 1, 0, 0, scm_sp_fftr, ("sample-vector:values-at-times -> sample-vector:frequencies\n    discrete fourier transform on the input data. only the real part"));
-  scm_c_define_procedure_c("sp-fftri", 1, 0, 0, scm_sp_fftri, ("sample-vector:frequencies -> sample-vector:values-at-times\n    inverse discrete fourier transform on the input data. only the real part"));
-  scm_c_define_procedure_c("sp-alsa-open", 5, 0, 0, scm_sp_alsa_open, ("device-name mode channel-count sample-rate latency -> sp-port"));
+  scm_c_define_procedure_c("sp-fftr", 1, 0, 0, scm_sp_fftr, ("sample-vector:values-at-times -> #(complex ...):frequencies\n    discrete fourier transform on the input data. only the real part"));
+  scm_c_define_procedure_c("sp-fftri", 1, 0, 0, scm_sp_fftri, ("#(complex ...):frequencies -> sample-vector:values-at-times\n    inverse discrete fourier transform on the input data. only the real part"));
+  scm_c_define_procedure_c("sp-alsa-open", 4, 1, 0, scm_sp_alsa_open, ("device-name mode channel-count sample-rate [latency] -> sp-port"));
   scm_c_define_procedure_c("sp-file-open", 2, 2, 0, scm_sp_file_open, ("path mode [channel-count sample-rate] -> sp-port"));
   scm_c_define_procedure_c("sp-port-close", 1, 0, 0, scm_sp_port_close, ("sp-port -> boolean"));
   scm_c_define_procedure_c("sp-port-input?", 1, 0, 0, scm_sp_port_input_p, ("sp-port -> boolean"));
