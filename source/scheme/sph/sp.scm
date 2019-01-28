@@ -277,6 +277,8 @@
         (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h is-reject state))))
 
   (define* (sp-plot-samples-display-file file-path #:key (type (q lines)) (color "blue"))
+    "string #:type symbol:lines/points #:color string -> unspecified
+     type and color correspond to gnuplot options"
     (execute "gnuplot" "--persist"
       "-e"
       (string-append "set key off; set size ratio 0.5; plot " (string-quote file-path)
@@ -292,6 +294,8 @@
       (l (port) (each (l (a) (display-line a port)) (sp-samples->list a)))))
 
   (define (sp-plot-samples a . display-args)
+    "samples [#:type #:color] -> unspecified
+     for display-args see sp-plot-samples-display-file"
     (let (path (tmpnam)) (sp-plot-samples->file a path)
       (apply sp-plot-samples-display-file path display-args)))
 
@@ -308,7 +312,7 @@
           a)
         (newline file))))
 
-  (define (sp-plot-segments a path channel)
+  (define (sp-plot-segments a path channel) "(vector ...) string integer:0..n"
     (let (path (tmpnam)) (sp-plot-segments->file a path channel)
       (sp-plot-samples-display-file path)))
 
@@ -384,7 +388,8 @@
 
   (define (sp-generate sample-rate channel-count duration segment-f sample-f . states)
     "integer integer procedure false/procedure any ... -> (any ...):states
-     calls segment-f for the samples of each second in duration. calls sample-f for each sample.
+     helper to create sample vectors.
+     calls segment-f for the samples for each second in duration. calls sample-f for each sample.
      if sample-f is false then segment-f is called with new segment data set to zero.
      segment-f :: env offset:seconds segment custom ... -> (any ...):state
      sample-f :: env offset:sample-count custom ... -> (sample-value any:state-value ...)"
@@ -692,6 +697,7 @@
     (sp-noise-band size center width state #:key (transition 0.08) (noise-f sp-noise-uniform~))
     "get a sample vector with noise in a specific frequency band.
      center, width and transition are as a fraction of the sample rate from 0 to 0.5"
+    ; todo: change to start/end frequency and check if initial filter delay occurs
     (sp-windowed-sinc-bp-br (sp-samples-new size (l (index) (noise-f))) (- center (/ width 2))
       (+ center (/ width 2)) transition transition #f state))
 
