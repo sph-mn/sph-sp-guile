@@ -26,6 +26,7 @@
     sp-fold-file-overlap
     sp-fold-integers
     sp-generate
+    sp-grain-map
     sp-hz->rads
     sp-moving-average
     sp-moving-average!
@@ -95,6 +96,7 @@
     sp-samples-set!
     sp-samples-split
     sp-samples?
+    sp-scheduler
     sp-segment
     sp-segments->alsa
     sp-segments->file
@@ -129,6 +131,7 @@
     (sph string)
     (sph uniform-vector)
     (sph vector)
+    (only (sph other) each-integer)
     (only (srfi srfi-1) drop-right))
 
   (load-extension "libguile-sph-sp" "sp_guile_init")
@@ -774,7 +777,7 @@
         (if (< index input-size)
           (pair (sp-samples-extract b index part-size #t) (loop (+ part-size index))) null))))
 
-  (define (sp-samples-list-add-offsets b start)
+  (define* (sp-samples-list-add-offsets b #:optional (start 0))
     "(samples ...) [integer] -> ((sample-offset samples) ...)
      map each samples vector in input to a pair with the cumulative sample
      offset of the length of sample vectors starting from start.
@@ -782,4 +785,55 @@
      a list ((0 samples) (8 samples) (10 samples))"
     (let loop ((b b) (offset start))
       (if (null? b) b
-        (pair (pair offset (first b)) (loop (tail b) (+ (sp-samples-length (first b)) offset)))))))
+        (pair (pair offset (first b)) (loop (tail b) (+ (sp-samples-length (first b)) offset))))))
+
+  (define (sp-scheduler additions output-size state)
+    "additions integer state/false -> (output:samples/false state)
+     additions: ((integer:sample-offset . samples) ...)/false
+     add sample vectors to be included in output sample vectors after specified sample offsets.
+     * length of output is always output-size per call
+     * length of total output can be longer than total combined input. output is buffered and zero padded as needed
+     * addition offsets are always relative to the current call
+     * if additions is null then scheduled output is returned until none is left in which case output will be false
+     * state: (integer:sample-counter . list:sorted-scheduled-segments)
+     example use cases: delay lines, grain duplication/reduction or basic sequencing
+     example
+       (let*
+         ( (state1 (sp-scheduler (list (pair 8 samples)) 10 #f))
+           (state2 (sp-scheduler null 10 (tail state1))))
+         (list (first state1) (first state2)))"
+    (let*
+      ( (state (or state (list 0 null))) (offset (first state)) (scheduled (second state))
+        (next-offset (+ offset output-size)) (output (sp-samples-new output-size 0))
+        (additions (map (l (b) (pair (max offset (+ offset (first b))) (tail b))) additions))
+        (scheduled
+          (fold
+            (l (b result)
+              (let ((samples-offset (first b)) (samples (tail b)))
+                (if (< samples-offset next-offset)
+                  (let*
+                    ( (samples-len (sp-samples-length samples))
+                      (count-that-fits (min samples-len (- next-offset samples-offset)))
+                      (count-that-doesnt-fit (- samples-len count-that-fits)))
+                    (each-integer count-that-fits
+                      (l (i)
+                        (let (output-i (+ (- samples-offset offset) i))
+                          (sp-samples-set! output output-i
+                            (+ (sp-samples-ref output output-i) (sp-samples-ref samples i))))))
+                    (if (zero? count-that-doesnt-fit) result
+                      (pair
+                        (pair next-offset
+                          (sp-samples-extract samples count-that-fits count-that-doesnt-fit))
+                        result)))
+                  (pair b result))))
+            null (append additions scheduled))))
+      (list output next-offset scheduled)))
+
+  (define (sp-grain-map input count f state)
+    "samples/integer integer procedure false/state -> (false/samples:output . state)
+     f :: ((offset . samples:grain) ...) -> ((offset . samples) ...)
+     if input is an integer, it returns unemitted output of that integer length.
+     if there is no more output then output is false"
+    (if (integer? input) (sp-scheduler null input state)
+      (sp-scheduler (f (sp-samples-list-add-offsets (sp-samples-split input count) 0))
+        (sp-samples-length input) state))))
