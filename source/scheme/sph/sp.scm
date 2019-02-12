@@ -24,6 +24,7 @@
     sp-float-sum
     sp-fold-file
     sp-fold-file-overlap
+    sp-fold-frames
     sp-fold-integers
     sp-generate
     sp-grain-map
@@ -42,9 +43,9 @@
     sp-phase-cycle
     sp-phase-sine-width
     sp-pi
-    sp-plot-fftr
-    sp-plot-fftr->file
-    sp-plot-fftr-display-file
+    sp-plot-fft
+    sp-plot-fft->file
+    sp-plot-fft-display-file
     sp-plot-samples
     sp-plot-samples->file
     sp-plot-samples-display-file
@@ -83,6 +84,7 @@
     sp-samples-copy-zero*
     sp-samples-divide
     sp-samples-extract
+    sp-samples-extract-padded
     sp-samples-from-list
     sp-samples-length
     sp-samples-list-add-offsets
@@ -95,6 +97,7 @@
     sp-samples-ref
     sp-samples-set!
     sp-samples-split
+    sp-samples-threshold
     sp-samples?
     sp-scheduler
     sp-segment
@@ -329,7 +332,7 @@
     (let (a-length (sp-samples-length a))
       (sp-samples-map-with-index (l (index a) (* a (sp-window-blackman index a-length))) a)))
 
-  (define sp-plot-spectrum-display-file sp-plot-samples-display-file)
+  (define (sp-plot-spectrum-display-file path) (sp-plot-samples-display-file path #:type "histeps"))
 
   (define (sp-plot-spectrum->file a path)
     "apply sp-spectrum on \"a\" and write the result to file at path"
@@ -337,20 +340,19 @@
       (l (port) (vector-each (l (a) (display-line a port)) (sp-spectrum a)))))
 
   (define (sp-plot-spectrum a)
-    (let (path (tmpnam)) (sp-plot-spectrum->file a path) (sp-plot-fftr-display-file path)))
+    (let (path (tmpnam)) (sp-plot-spectrum->file a path) (sp-plot-fft-display-file path)))
 
   (define (sp-spectrum a) "samples -> #(real ...)"
     (vector-map (l (b) (* 2 (/ (magnitude b) (sp-samples-length a)))) (sp-fftr a)))
 
-  (define sp-plot-fftr-display-file sp-plot-samples-display-file)
+  (define sp-plot-fft-display-file sp-plot-spectrum-display-file)
 
-  (define (sp-plot-fftr->file a path)
-    "write only the real part of a sp-fftr result to file at path"
+  (define (sp-plot-fft->file a path) "write the magnitudes of the fft result to file at path"
     (call-with-output-file path
-      (l (port) (vector-each (l (a) (display-line (real-part a) port)) a))))
+      (l (port) (vector-each (l (a) (display-line (magnitude a) port)) a))))
 
-  (define (sp-plot-fftr a)
-    (let (path (tmpnam)) (sp-plot-fftr->file a path) (sp-plot-fftr-display-file path)))
+  (define (sp-plot-fft a)
+    (let (path (tmpnam)) (sp-plot-fft->file a path) (sp-plot-fft-display-file path)))
 
   (define (sp-sine~ offset freq)
     "real:radians:phase-offset real:radians-per-s -> real:sample
@@ -751,21 +753,32 @@
               (if overlap (apply f a (apply f overlap custom)) (apply f a custom)))))
         segment-size path null custom)))
 
-  (define* (sp-samples-extract b start count #:optional padding)
-    "integer integer samples [boolean] -> samples
-     extract a continuous portion from indices start to end both inclusively from a samples vector.
-     start must be in bounds.
-     if end is out of bounds then return a shorter or zero padded vector,
-     depending on if padding is false or true respectively.
-     count must be greater than zero"
-    (let ((b-size (sp-samples-length b)))
-      (if (< (+ start count) b-size)
-        (sp-samples-new count (l (index) (sp-samples-ref b (+ start index))))
-        (if padding
-          (sp-samples-new count
-            (l (index)
-              (let (index (+ start index)) (if (< index b-size) (sp-samples-ref b index) 0))))
-          (sp-samples-new (- b-size start) (l (index) (sp-samples-ref b (+ start index))))))))
+  (define* (sp-samples-extract input start count)
+    "integer integer samples -> samples
+     extract from input beginning from index start as many samples as available
+     up to a maximum of count.
+     start must be in bounds"
+    (sp-samples-new (min count (- (sp-samples-length input) start))
+      (l (index) (sp-samples-ref input (+ start index)))))
+
+  (define* (sp-samples-extract-padded input start count)
+    "samples integer integer -> samples
+     treat input as a sample vector surrounded by an infinite number of zero samples
+     where input starts at index zero.
+     extract count number of samples beginning from index start.
+     start can be negative and start plus count can go over the length of input and the result will
+     be zero padded accordingly"
+    (let*
+      ( (input-size (sp-samples-length input)) (output (sp-samples-new count 0))
+        (output-start (if (< start 0) (* -1 start) 0)) (input-start (if (< start 0) 0 start))
+        (input-end (min input-size (+ input-start (max 0 (- count output-start)))))
+        (copy-count (- input-end input-start)))
+      (let loop ((i 0))
+        (if (< i copy-count)
+          (begin
+            (sp-samples-set! output (+ output-start i) (sp-samples-ref input (+ input-start i)))
+            (loop (+ 1 i)))))
+      output))
 
   (define (sp-samples-split b count)
     "samples integer -> (samples ...)
@@ -775,7 +788,7 @@
     (let* ((input-size (sp-samples-length b)) (part-size (ceiling (/ input-size count))))
       (let loop ((index 0))
         (if (< index input-size)
-          (pair (sp-samples-extract b index part-size #t) (loop (+ part-size index))) null))))
+          (pair (sp-samples-extract-padded b index part-size) (loop (+ part-size index))) null))))
 
   (define* (sp-samples-list-add-offsets b #:optional (start 0))
     "(samples ...) [integer] -> ((sample-offset samples) ...)
@@ -836,4 +849,22 @@
      if there is no more output then output is false"
     (if (integer? input) (sp-scheduler null input state)
       (sp-scheduler (f (sp-samples-list-add-offsets (sp-samples-split input count) 0))
-        (sp-samples-length input) state))))
+        (sp-samples-length input) state)))
+
+  (define (sp-fold-frames f input frame-size overlap-factor . custom)
+    "procedure samples integer real:0..1 any ... -> (any ...):custom
+     f :: samples any:custom ... -> (custom ...)
+     call f with each overlapping frame of input samples and other custom values.
+     # example
+     frame-size: 100, overlap-factor: 0.5, frames: -50..50 0..100 50..150"
+    (let*
+      ( (hop-size (inexact->exact (round (* overlap-factor frame-size))))
+        (input-size (sp-samples-length input)))
+      (let loop ((i 0) (custom custom))
+        (if (< (+ frame-size i) input-size)
+          (loop (+ hop-size i) (apply f (sp-samples-extract-padded input i frame-size) custom))
+          custom))))
+
+  (define (sp-samples-threshold a limit)
+    "set to zero every sample with absolute value below threshold value"
+    (sp-samples-map (l (a) (absolute-threshold a limit)) a)))

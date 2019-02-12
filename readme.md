@@ -53,6 +53,7 @@ installed files
 (sp-port-close dac)
 
 (define file (sp-file-open "/tmp/sp-file.wav" sp-port-mode-write channel-count sample-rate))
+
 ; vector with one sample vector per channel
 (sp-port-write file (vector (f64vector 1 2 3 4)) 4)
 (sp-port-close file)
@@ -114,12 +115,11 @@ sp-generate expects sample-f to return single sample numbers or vectors with one
 
 # modules
 ## (sph sp)
-```
 differences :: a ->
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
 f64vector-sum :: f64vector [start end] -> number
-sp-alsa-open :: device-name mode channel-count sample-rate latency -> sp-port
+sp-alsa-open :: device-name mode channel-count sample-rate [latency] -> sp-port
 sp-asymmetric-moving :: procedure real integer list -> (any:result-value . state)
 sp-asymmetric-moving-average :: real integer list -> (result-value . state)
 sp-asymmetric-moving-median :: real integer list -> (result-value . state)
@@ -132,15 +132,17 @@ sp-convolve! :: out a b carryover [carryover-len] -> unspecified
 sp-duration->sample-count :: seconds sample-rate ->
 sp-factor->rads :: a sample-rate ->
 sp-fft-resynth :: f a ->
-sp-fftr :: sample-vector:values-at-times -> sample-vector:frequencies
-sp-fftri :: sample-vector:frequencies -> sample-vector:values-at-times
+sp-fftr :: sample-vector:values-at-times -> #(complex ...):frequencies
+sp-fftri :: #(complex ...):frequencies -> sample-vector:values-at-times
 sp-file-open :: path mode [channel-count sample-rate] -> sp-port
 sp-filter-bank :: samples ((cutoff-l cutoff-h transition-l transition-h) ...) list -> ((samples ...) . state)
 sp-float-sum :: a ... ->
 sp-fold-file :: procedure integer string any ... -> any
 sp-fold-file-overlap :: procedure integer real string any ... -> any
+sp-fold-frames :: procedure samples integer real:0..1 any ... -> (any ...):custom
 sp-fold-integers :: integer procedure any ... -> (any ...)
 sp-generate :: integer integer procedure false/procedure any ... -> (any ...):states
+sp-grain-map :: samples/integer integer procedure false/state -> (false/samples:output . state)
 sp-hz->rads :: real -> real:radians-per-second
 sp-moving-average :: sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector
 sp-moving-average! :: result source previous next radius [start end] -> unspecified
@@ -156,17 +158,17 @@ sp-phase :: number number number -> number
 sp-phase-cycle :: integer integer false/previous-result -> (result _ ...):state
 sp-phase-sine-width :: integer:sample-count integer:sample-count -> real
 sp-pi
-sp-plot-fftr :: a ->
-sp-plot-fftr->file :: a path ->
-sp-plot-fftr-display-file :: file-path #:type #:color ->
-sp-plot-samples :: a display-args ... ->
+sp-plot-fft :: a ->
+sp-plot-fft->file :: a path ->
+sp-plot-fft-display-file :: path ->
+sp-plot-samples :: samples [#:type #:color] -> unspecified
 sp-plot-samples->file :: a path ->
-sp-plot-samples-display-file :: file-path #:type #:color ->
+sp-plot-samples-display-file :: string #:type symbol:lines/points #:color string -> unspecified
 sp-plot-segments :: a path channel ->
 sp-plot-segments->file :: (#(vector:channel ...) ...) string ->
 sp-plot-spectrum :: a ->
 sp-plot-spectrum->file :: a path ->
-sp-plot-spectrum-display-file :: file-path #:type #:color ->
+sp-plot-spectrum-display-file :: path ->
 sp-port-channel-count :: sp-port -> integer
 sp-port-close :: sp-port -> boolean
 sp-port-input? :: sp-port -> boolean
@@ -195,8 +197,11 @@ sp-samples-copy :: xvector -> xvector
 sp-samples-copy-zero :: a ->
 sp-samples-copy-zero* :: a c ->
 sp-samples-divide :: a divisor ->
+sp-samples-extract :: integer integer samples -> samples
+sp-samples-extract-padded :: samples integer integer -> samples
 sp-samples-from-list :: elts ->
 sp-samples-length :: v ->
+sp-samples-list-add-offsets :: (samples ...) [integer] -> ((sample-offset samples) ...)
 sp-samples-map :: procedure:{any:element ... -> any} xvector ... -> xvector
 sp-samples-map! :: procedure:{any:element ... -> any} xvector ... -> unspecified
 sp-samples-map-with :: procedure:{any:variable any:element ... -> any} any:variable xvector -> xvector
@@ -205,7 +210,10 @@ sp-samples-multiply :: a factor ->
 sp-samples-new :: length [value] ->
 sp-samples-ref :: v i ->
 sp-samples-set! :: v i x ->
+sp-samples-split :: samples integer -> (samples ...)
+sp-samples-threshold :: a limit ->
 sp-samples? :: obj ->
+sp-scheduler :: additions integer state/false -> (output:samples/false state)
 sp-segment :: integer integer false/procedure:{index states ... -> number/vector} -> (#(vector:channel ...) . states)
 sp-segments->alsa :: (#(vector:channel ...) ...) -> unspecified
 sp-segments->file :: (#(#(sample ...):channel ...):segment ...) string -> unspecified
@@ -226,11 +234,9 @@ sp-windowed-sinc-bp-br-ir :: a b c d e ->
 sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
-```
 
 ## (sph sp sequencer)
-```
-seq :: integer list procedure:{results state -> any:seq-result} -> any:seq-result
+seq :: integer:sample-offset list procedure:{results state -> any:seq-result} -> any:seq-result
 seq-default-mixer :: output ->
 seq-event :: name f optional ...
 seq-event-f :: a ->
@@ -247,7 +253,7 @@ seq-index-events :: a ->
 seq-index-f :: a ->
 seq-index-f-new :: number seq-state -> procedure
 seq-index-i-f :: a ->
-seq-index-i-f-new :: vector number number -> procedure
+seq-index-i-f-new :: integer -> procedure:{integer integer -> integer}
 seq-index-i-next :: index time ->
 seq-index-new :: data end events f i-f start ->
 seq-index-next :: index time state ->
@@ -260,9 +266,9 @@ seq-state-event-states :: a ->
 seq-state-index :: a ->
 seq-state-index-i :: a ->
 seq-state-input :: a ->
-seq-state-new :: procedure [#:event-f-list list #:user-value alist] -> seq-state
+seq-state-new :: procedure ? ... -> seq-state
 seq-state-options :: a ->
 seq-state-output :: a ->
+seq-state-rate :: a ->
 seq-state-update :: a #:user-value #:events-f #:event-states #:index #:index-i #:input #:mixer #:options #:output ->
 seq-state-user-value :: a ->
-```

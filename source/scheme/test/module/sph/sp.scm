@@ -96,8 +96,15 @@
         (state (sp-convolution-filter! out a (l a b) (list 0.1 0.08) state)))
       (sp-samples? out)))
 
-  (test-execute-procedures-lambda (sp-convolution-filter) (sp-convolve)
-    (sp-windowed-sinc ((2 2 2 2) 0.1 0.08) #t)
+  (define-test (sp-samples-extract)
+    (let (series (sp-samples-from-list (map-integers 10 identity)))
+      (and (equal? (list 8.0) (sp-samples->list (sp-samples-extract series 8 1 #t)))
+        (equal? (list 8.0 9.0) (sp-samples->list (sp-samples-extract series 8 6 #f)))
+        (equal? (list 8.0 9.0 0.0 0.0 0.0 0.0)
+          (sp-samples->list (sp-samples-extract series 8 6 #t))))))
+
+  (test-execute-procedures-lambda (sp-samples-extract) (sp-convolution-filter)
+    (sp-convolve) (sp-windowed-sinc ((2 2 2 2) 0.1 0.08) #t)
     (sp-moving-average
       ; no prev/next
       ((2 2 2 2) #f #f 1) (1.3333333333333333 2.0 2.0 1.3333333333333333)
