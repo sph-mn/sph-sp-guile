@@ -78,7 +78,7 @@
     sp-sample-sum
     sp-samples->list
     sp-samples-apply-blackman-window
-    sp-samples-apply-hanning-window
+    sp-samples-apply-hann-window
     sp-samples-copy
     sp-samples-copy-zero
     sp-samples-copy-zero*
@@ -115,7 +115,7 @@
     sp-triangle
     sp-triangle~
     sp-window-blackman
-    sp-window-hanning
+    sp-window-hann
     sp-windowed-sinc-bp-br
     sp-windowed-sinc-bp-br!
     sp-windowed-sinc-bp-br-ir
@@ -322,11 +322,11 @@
     (let (path (tmpnam)) (sp-plot-segments->file a path channel)
       (sp-plot-samples-display-file path)))
 
-  (define (sp-window-hanning offset size) (* 0.5 (- 1 (cos (/ (* 2 sp-pi offset) (- size 1))))))
+  (define (sp-window-hann offset size) (* 0.5 (- 1 (cos (/ (* 2 sp-pi offset) (- size 1))))))
 
-  (define (sp-samples-apply-hanning-window a)
+  (define (sp-samples-apply-hann-window a)
     (let (a-length (sp-samples-length a))
-      (sp-samples-map-with-index (l (index a) (* a (sp-window-hanning index a-length))) a)))
+      (sp-samples-map-with-index (l (index a) (* a (sp-window-hann index a-length))) a)))
 
   (define (sp-samples-apply-blackman-window a)
     (let (a-length (sp-samples-length a))
@@ -861,7 +861,7 @@
       ( (hop-size (inexact->exact (round (* overlap-factor frame-size))))
         (input-size (sp-samples-length input)))
       (let loop ((i 0) (custom custom))
-        (if (< (+ frame-size i) input-size)
+        (if (<= (+ frame-size i) input-size)
           (loop (+ hop-size i) (apply f (sp-samples-extract-padded input i frame-size) custom))
           custom))))
 
