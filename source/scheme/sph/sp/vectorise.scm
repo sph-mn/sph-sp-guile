@@ -6,12 +6,15 @@
     (sph)
     (sph list)
     (sph math)
-    (sph other)
     (sph sp)
-    (sph sp experimental)
     (sph vector)
-    (only (guile) floor inexact->exact)
-    (only (srfi srfi-1) drop split-at))
+    (only (guile)
+      floor
+      inexact->exact
+      display)
+    (only (srfi srfi-1) drop split-at)
+    ;(sph other)
+    )
 
   (define sph-sp-vectorise-description
     "experimental. convert a time/magnitude samples array to sines and noise parameters that can be used to approximately recreate the sound.
@@ -20,6 +23,15 @@
 
   (define (sp-fft-bins-magnitudes a) (vector-map (l (b) (/ (magnitude b) (vector-length a))) a))
   (define (sp-fft-drop-dc a) (list->vector (drop (vector->list a) 1)))
+
+  (define* (sp-fft-threshold a #:optional (max-factor 1.0e-4))
+    "#(complex ...) real -> #(complex ...)
+     remove all values with magnitudes smaller than (max / max-divisor).
+     this is mainly to remove non-useful rounding error phase values that would lead to large angles"
+    (let*
+      ( (a-list (vector->list a)) (magnitudes (map magnitude a-list))
+        (threshold (* (apply max magnitudes) max-factor)))
+      (apply vector (map (l (a b) (if (> threshold b) 0 a)) a-list magnitudes))))
 
   (define (sp-frames-count data-size duration overlap-factor)
     "calculate how many frames with overlap can be taken from data-size"
@@ -30,7 +42,7 @@
      fft input is zero padded so that results have the same size for different effective input
      durations"
     (let
-      ( (overlap-factor 0.5) (input-threshold 0.001) (bin-magnitude-threshold 100)
+      ( (overlap-factor 0.5) (input-threshold 0.001) (bin-magnitude-threshold 0.01)
         (window-f sp-samples-apply-hann-window))
       (apply sp-fold-frames
         (l (input . custom)
@@ -46,6 +58,8 @@
             custom))
         input frame-size overlap-factor custom)))
 
+  (define (debug-log-line a . b) (display-line (pair a b)) (display-line "") a)
+
   (define (sp-vectorise-series input duration scaled-duration)
     "samples integer integer -> ((vector:bins number:change integer:duration):series-element ...):series"
     (reverse
@@ -58,25 +72,22 @@
                   (if previous-bin-magnitudes
                     (absolute-threshold
                       (vector-relative-change-index/value previous-bin-magnitudes bin-magnitudes)
-                      1.0e-4)
+                      0.001)
                     0)))
               (pairs (pair (list bins change duration) result) bin-magnitudes custom)))
           input duration scaled-duration null #f))))
 
-  (define (complex-from-magnitude-and-imaginary m i)
-    "create a complex number from a magnitude and the imaginary part of the number"
-    ; sqrt gives a complex number if the input value is negative
-    (let* ((a (- (* m m) (* i i))) (b (sqrt (abs a))) (c (if (< a 0) (- b) b)))
-      (make-rectangular c i)))
-
-  (define (combine-one a b)
+  (define (combine-one a b a-change b-change duration-offset count-ratio)
     "receives the same number of bins for the same frequency ranges and combines them.
      this is the function that adds information from higher resolution fft results to lower resolution results"
+    ; the weighting could be improved. the most useful feature is perhaps that it is or can be like an duration-adaptive fft
     (let*
       ( (a-magnitudes (map magnitude a)) (a-imaginary (map imag-part a))
-        (a-mean (arithmetic-mean a-magnitudes)) (b-magnitudes (map magnitude b))
-        (b-imaginary (map imag-part b)))
-      (map complex-from-magnitude-and-imaginary (scale-to-mean a-mean b-magnitudes) b-imaginary)))
+        (a-mean (arithmetic-mean a-magnitudes)) (a-imaginary-mean (arithmetic-mean a-imaginary))
+        (b-magnitudes (map magnitude b)) (b-imaginary (map imag-part b)))
+      (map complex-from-magnitude-and-imaginary
+        (linearly-interpolate (/ 1 (+ 1 duration-offset)) a-magnitudes b-magnitudes)
+        (linearly-interpolate (/ 1 (+ 1 duration-offset)) a-magnitudes b-magnitudes))))
 
   (define (combine-series-one a b duration-offset count-ratio)
     "(series-element ...) (series-element) integer -> (series-element ...)
@@ -86,24 +97,26 @@
     (map
       (l (a)
         (apply
-          (l (a-bins a-change a-duration b-bins b-change b-duration) (display-line a-bins)
+          (l (a-bins a-change a-duration b-bins b-change b-duration)
             (let loop ((index count-ratio))
               (if (< index (vector-length a-bins))
-                (begin
+                (let
+                  (values
+                    (map
+                      (l (bins) (map-integers count-ratio (l (c) (vector-ref bins (- index c)))))
+                      (list a-bins b-bins)))
                   (each-with-index
                     (l (c-index c-value) (vector-set! a-bins (- index c-index) c-value))
-                    (apply combine-one
-                      (map
-                        (l (bins) (map-integers count-ratio (l (c) (vector-ref bins (- index c)))))
-                        (list a-bins b-bins))))
-                  (loop (+ 1 index)))
-                (list a-bins a-change a-duration))))
+                    (combine-one (first values) (second values)
+                      a-change b-change duration-offset count-ratio))
+                  (loop (+ count-ratio index)))
+                (list a-bins b-change a-duration))))
           (append a b)))
       a))
 
   (define (combine-series a b duration-offset)
     "(series-element ...) (series-element ...) integer -> (series-element ...)"
-    (let (count-ratio (inexact->exact (round (/ (length a) (length b)))))
+    (let (count-ratio (inexact->exact (floor (/ (length a) (length b)))))
       (let loop ((a a) (b b) (result null))
         (if (null? b) result
           (let (a (apply-values pair (split-at a count-ratio)))
@@ -114,15 +127,14 @@
     "samples [integer] -> (series-element ...)
      duration is an exponent for (2 ** exponent)
      result length is the length of the first series.
-     result elements are (start-duration * overlap-factor) samples apart.
+     result elements are (2**duration * overlap-factor) samples apart.
      analyses only parts of input that powers of two length frames fit into"
     (let*
-      ( (end-exponent (inexact->exact (floor (log2 (sp-samples-length input)))))
-        (end-duration (expt 2 end-exponent))
-        (start-exponent (or duration (round (/ end-exponent 2)))))
-      (let loop ((exponent start-exponent) (result null))
-        (if (<= exponent end-exponent)
-          (let (series (sp-vectorise-series input (expt 2 exponent) end-duration))
+      ( (max-exponent (inexact->exact (floor (log2 (sp-samples-length input)))))
+        (max-duration (expt 2 max-exponent)) (min-exponent (or duration (round (/ max-exponent 2)))))
+      (let loop ((exponent min-exponent) (result null))
+        (if (<= exponent max-exponent)
+          (let (series (sp-vectorise-series input (expt 2 exponent) max-duration))
             (loop (+ 1 exponent)
-              (if (null? result) series (combine-series result series (- exponent start-exponent)))))
+              (if (null? result) series (combine-series result series (- exponent min-exponent)))))
           result)))))
