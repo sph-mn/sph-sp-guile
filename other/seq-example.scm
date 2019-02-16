@@ -15,9 +15,7 @@
    events-f is called every (seq-state-duration seq-state) seconds.
    this is so that not all events have to be created at once but can be returned near the time they
    are starting"
-  (list (seq-event a sound-a 0) (seq-event b sound-b 150) (seq-event c sound-c 400)))
-
-;-- without sp-generate
+  (list (seq-event sound-a 0) (seq-event sound-b 150) (seq-event sound-c 400)))
 
 (let*
   ( (seq-state (seq-state-new events-f)) (sample-rate 1000)
