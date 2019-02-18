@@ -115,6 +115,7 @@ sp-generate expects sample-f to return single sample numbers or vectors with one
 
 # modules
 ## (sph sp)
+```
 differences :: a ->
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
@@ -234,8 +235,10 @@ sp-windowed-sinc-bp-br-ir :: a b c d e ->
 sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
+```
 
 ## (sph sp sequencer)
+```
 seq :: integer:sample-offset list procedure:{results state -> any:seq-result} -> any:seq-result
 seq-default-mixer :: output ->
 seq-event :: name f optional ...
@@ -272,3 +275,4 @@ seq-state-output :: a ->
 seq-state-rate :: a ->
 seq-state-update :: a #:user-value #:events-f #:event-states #:index #:index-i #:input #:mixer #:options #:output ->
 seq-state-user-value :: a ->
+```
