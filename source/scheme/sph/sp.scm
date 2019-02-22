@@ -36,9 +36,6 @@
     sp-noise-normal~
     sp-noise-uniform~
     sp-overlap
-    sp-path
-    sp-path-new
-    sp-path-new*
     sp-phase
     sp-phase-cycle
     sp-phase-sine-width
@@ -125,6 +122,7 @@
   (import
     (guile)
     (rnrs bytevectors)
+    (rnrs exceptions)
     (rnrs sorting)
     (sph)
     (sph list)
@@ -410,115 +408,6 @@
                 (l (index . states) (apply sample-f env (+ index (* offset sample-rate)) states)))
               states)))
         states)))
-
-  (define sp-path-new
-    (let
-      ( (line-new
-          (l (result start a) "add line interpolating procedures to result with params \"a\""
-            (let*
-              ( (points (pair start (map-slice 2 vector a)))
-                (segments
-                  (map-segments 2
-                    (l (p1 p2)
-                      (let*
-                        ((start (vector-first p1)) (end (vector-first p2)) (duration (- end start)))
-                        (vector start end
-                          ; segment-f
-                          (l (time)
-                            (vector-second
-                              (vector-linearly-interpolate (/ (- time start) duration) p1 p2))))))
-                    points)))
-              (list (append result segments) (last points)))))
-        (bezier-new
-          (l (result start a)
-            (let*
-              ( (points (pair start (map-slice 2 vector a)))
-                (segment
-                  (let*
-                    ( (p1 (first points)) (p2 (last points)) (start (vector-first p1))
-                      (end (vector-first p2)) (duration (- end start)))
-                    (vector start end
-                      (l (time)
-                        (vector-second (apply bezier-curve (/ (- time start) duration) points)))))))
-              (list (append result (list segment)) (last points)))))
-        (arc-new
-          (l (result start a)
-            "the arc ends at point (x, y)
-            the ellipse has the two radii (rx, ry)
-            the x-axis of the ellipse is rotated by x-axis-rotation"
-            (apply
-              (l* (x y radius-x #:optional (radius-y radius-x) (rotation 0) large-arc sweep)
-                (let*
-                  ( (p1 start) (p2 (vector x y)) (start (vector-first start))
-                    (end x) (duration (- end start)))
-                  (list
-                    (append result
-                      (list
-                        (vector start end
-                          (l (time)
-                            (vector-second
-                              (first
-                                (elliptical-arc (/ (- time start) duration) p1
-                                  p2 radius-x radius-y rotation large-arc sweep)))))))
-                    (vector x y))))
-              a)))
-        (start-new (l (result start a) (list result (apply vector a)))))
-      (l (segments)
-        "number ((symbol:type any:parameter ...) ...) -> path-state
-        draw a path of multiple segments between points interpolated by functions selectable for each segment.
-        returns a state object that is to be passed to sp-path to get a point on the path.
-        there are no required segment types but at least one must be given.
-        if no start is given then the path starts at 0. start can also be used as a path segment to create gaps.
-        this implementation is similar to the path element of svg vector graphics.
-        for \"arc\" see how arcs are created with a path with svg graphics
-        segment types
-          (start time value)
-          (bezier time value time/value ...)
-          (line time value time/value ...)
-          (arc x y radius-x [radius-y rotation large-arc sweep])
-        example
-          (sp-path-new* (start 20 0) (line 50 0.25) (line 80 0.4) (line 120 0.01))"
-        (let*
-          ( (segments
-              (first
-                (fold-multiple
-                  (l (a result start)
-                    ( (case (first a)
-                        ((line) line-new)
-                        ((bezier) bezier-new)
-                        ((arc) arc-new)
-                        ((start) start-new))
-                      result start (tail a)))
-                  segments null #(0 0)))))
-          (let ((next (first segments)) (index-i 0) (index (apply vector segments)))
-            (list next index-i index))))))
-
-  (define-syntax-rule (sp-path-new* (symbol param ...) ...)
-    (sp-path-new (list (list (quote symbol) param ...) ...)))
-
-  (define (sp-path-advance path-state)
-    "path-state -> path-state
-     continue with the next segment"
-    (apply
-      (l (next index-i index)
-        (let (index-i (+ 1 index-i))
-          (if (< index-i (vector-length index)) (list (vector-ref index index-i) index-i index)
-            (list #f #f index))))
-      path-state))
-
-  (define sp-path-segment-start (vector-accessor 0))
-  (define sp-path-segment-end (vector-accessor 1))
-  (define sp-path-segment-f (vector-accessor 2))
-
-  (define* (sp-path time path #:optional (c pair))
-    "number path-state [procedure -> result] -> (data . path-state)/any
-     get value at time for a path created by sp-path-new.
-     returns zero for gaps or after the end of the path"
-    (let (a (first path))
-      (if (and a (>= time (sp-path-segment-start a)))
-        (if (< time (sp-path-segment-end a)) (pair ((sp-path-segment-f a) time) path)
-          (sp-path time (sp-path-advance path) c))
-        (pair 0 path))))
 
   (define (sp-rectangular x a b c d)
     "integer:sample-count ... -> real:sample
