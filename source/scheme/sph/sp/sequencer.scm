@@ -112,7 +112,8 @@
   (define (seq-index-i-f-new slot-duration)
     "integer -> procedure:{integer integer -> integer}
      return a procedure that returns an index in index-data for a time value"
-    (l (time index-start) (inexact->exact (truncate (/ (- time index-start) slot-duration)))))
+    (l (time index-start) (inexact->exact (truncate (/ (- time index-start) slot-duration)))
+      (inexact->exact (truncate (/ (- time index-start) slot-duration)))))
 
   (define (seq-index-f-new time state)
     "number seq-state -> procedure
@@ -155,7 +156,7 @@
                             (append (map-integers (- diff 1) (list null))
                               (pair a (loop (tail rest) id)))
                             (pair a (loop (tail rest) id))))))))
-                (if (null? slots) (seq-index-new (vector) end null index-f index-i-f time)
+                (if (null? slots) (seq-index-new (vector) end null index-f (l a 0) time)
                   (begin
                     (let*
                       ( (slots (if (zero? (first (first slots))) slots (pair (list 0) slots)))
@@ -259,7 +260,7 @@
 
   (define (seq-default-mixer output)
     "combines multiple event-f results, seq-output objects, into one seq result, which should be sample values.
-     sum the samples of each channel, clip and return a vector with one sample per channel"
+     sum the samples of each channel, clip and return a list with one sample per channel"
     (if (null? output) #f
       (list->vector
         (map (l (a) (max -1 (min 1 a)))

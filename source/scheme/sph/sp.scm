@@ -275,6 +275,7 @@
 
   (define* (sp-windowed-sinc-bp-br in cutoff-l cutoff-h transition-l transition-h is-reject state)
     "samples real real real boolean false/convolution-filter-state -> samples
+     like sp-windowed-sinc-bp-br! but creates a new output samples vector as long as the input.
      state is still eventually going to be modified"
     (let (out (sp-samples-copy-zero in))
       (pair out
@@ -389,19 +390,20 @@
   (define (sp-clip~ a) "eventually adjust value to not exceed -1 or 1"
     (if (< 0 a) (min 1.0 a) (max -1.0 a)))
 
-  (define (sp-generate sample-rate channel-count duration segment-f sample-f . states)
-    "integer integer procedure false/procedure any ... -> (any ...):states
+  (define (sp-generate channel-count sample-rate duration segment-f sample-f . states)
+    "integer integer false/procedure false/procedure any ... -> (any ...):states
      helper to create sample vectors.
      calls segment-f for the samples for each second in duration. calls sample-f for each sample.
      if sample-f is false then segment-f is called with new segment data set to zero.
      segment-f :: env offset:seconds segment custom ... -> (any ...):state
      sample-f :: env offset:sample-count custom ... -> (sample-value any:state-value ...)"
-    (let*
-      ((sample-duration (/ 1 sample-rate)) (env (vector sample-rate sample-duration channel-count)))
+    (let (env (vector sample-rate channel-count))
       (apply sp-fold-integers duration
         (l (offset . states)
-          (apply segment-f env
-            offset
+          (apply
+            (or segment-f
+              (l (env time segment result . states) (pair (pair segment result) states)))
+            env offset
             (apply sp-segment sample-rate
               channel-count
               (and sample-f
@@ -590,12 +592,12 @@
                   (sp-samples-ref b (- index overlap-length))))))))))
 
   (define*
-    (sp-noise-band size center width state #:key (transition 0.08) (noise-f sp-noise-uniform~))
+    (sp-noise-band size center radius state #:key (transition 0.08) (noise-f sp-noise-uniform~)
+      is-reject)
     "get a sample vector with noise in a specific frequency band.
-     center, width and transition are as a fraction of the sample rate from 0 to 0.5"
-    ; todo: change to start/end frequency and check if initial filter delay occurs
-    (sp-windowed-sinc-bp-br (sp-samples-new size (l (index) (noise-f))) (- center (/ width 2))
-      (+ center (/ width 2)) transition transition #f state))
+     center, radius and transition are as a fraction of the sample rate from 0 to 0.5"
+    (sp-windowed-sinc-bp-br (sp-samples-new size (l (index) (noise-f))) (- center radius)
+      (+ center radius) transition transition #f state))
 
   (define (sp-sine-of-width x width)
     "return a value for a repeating sine with given sample width at sample offset x"
