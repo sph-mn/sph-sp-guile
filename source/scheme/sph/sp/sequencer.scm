@@ -2,6 +2,11 @@
   (export
     seq
     seq-default-mixer
+    seq-dict-bind
+    seq-dict-ref
+    seq-dict-refq
+    seq-dict-update
+    seq-dict-updateq
     seq-event
     seq-event-custom
     seq-event-f
@@ -44,6 +49,7 @@
       compose
       inexact->exact
       make-list)
+    (only (rnrs base) set!)
     (only (sph list)
       list-sort-with-accessor
       map-apply
@@ -67,8 +73,17 @@
 
   ; options for performance optimisation:
   ; * vector and vector-set! for states, hashtable and hashtable-set! for event-states
-  ; * execute event lists in parallel (events shall only be able to access modulation parameters from previous samples)
+  ; * execute event-lists in parallel (events shall only be able to access modulation parameters from previous samples)
   ;
+  (define (seq-dict-ref state key) (alist-ref state key))
+  (define (seq-dict-update state . key/value) (apply alist-set-multiple state key/value))
+  (define (seq-dict-new) null)
+  (define-syntax-rule (seq-dict-refq state key) (seq-dict-ref state (quote key)))
+
+  (define-syntax-rule (seq-dict-updateq state key/value ...)
+    (apply seq-dict-update state (quote-odd key/value ...)))
+
+  (define-syntax-rule (seq-dict-bind state (id ...) body ...) (alist-bind state (id ...) body ...))
   (define seq-index-data (vector-accessor 1))
   (define seq-index-end (vector-accessor 2))
   (define seq-index-events (vector-accessor 3))
@@ -172,7 +187,7 @@
     "procedure ? ... -> seq-state
      create a new state object"
     (vector (q seq-state) (or user-value null)
-      events-f (or event-states null)
+      events-f (or event-states (seq-dict-new))
       index (or index-i 0)
       (or input null) (or mixer seq-default-mixer)
       (or (and options (alist-merge seq-state-options-default options)) seq-state-options-default)
@@ -192,10 +207,12 @@
   (define seq-event-groups (vector-accessor 3))
   (define seq-event-name (vector-accessor 4))
   (define seq-event-start (vector-accessor 5))
+  (define seq-event-id-next (let (counter 0) (nullary (set! counter (+ 1 counter)) counter)))
 
   (define* (seq-event-new f #:optional start event-state name groups)
-    "procedure [integer ((symbol . any) ...) symbol (symbol ...)] -> vector"
-    (vector (q seq-event) (or event-state null) f groups (or name (q unnamed)) (or start 0)))
+    "procedure [integer false/((symbol . any) ...) symbol (symbol ...)] -> vector"
+    (vector (q seq-event) (or event-state (seq-dict-new))
+      f groups (or name (seq-event-id-next)) (or start 0)))
 
   (define seq-event seq-event-new)
 
@@ -238,12 +255,12 @@
     "integer/vector/any seq-state [list:alist] -> list
      create the output structure that event-f must return.
      seq-output creates event output, seq-output-new creates seq output"
-    (pairs data state (or event-state null)))
+    (pairs data state (or event-state (seq-dict-new))))
 
   (define (seq-default-mixer output)
     "combines multiple event-f results, seq-output objects, into one seq result, which should be sample values.
      sum the samples of each channel, clip and return a vector with one sample per channel"
-    (if (null? output) (vector)
+    (if (null? output) #f
       (list->vector
         (map (l (a) (max -1 (min 1 a)))
           (map-apply float-sum
@@ -299,8 +316,8 @@
               ; for each event in input event list
               (let loop
                 ( (state state) (rest event-list) (result-event-list null)
-                  (result-event-states null))
-                (if (null? rest) (c state result-event-list result-event-states)
+                  (event-states event-states))
+                (if (null? rest) (c state result-event-list event-states)
                   (let (event (first rest))
                     ; check if event is due
                     (if (<= (seq-event-start event) time)
@@ -309,7 +326,8 @@
                           (event-output
                             ( (seq-event-f event) time state
                               event (- time (seq-event-start event))
-                              (or (alist-ref event-states event-name) (seq-event-state event)))))
+                              (or (and event-name (seq-dict-ref event-states event-name))
+                                (seq-event-state event)))))
                         (if event-output
                           (apply
                             (l (data state . event-state)
@@ -318,29 +336,28 @@
                                   (pair (seq-output-new event-name data event-state event)
                                     (seq-state-output state)))
                                 (tail rest) (pair event result-event-list)
-                                (pair (pair event-name event-state) result-event-states)))
+                                (seq-dict-update event-states event-name event-state)))
                             event-output)
-                          (loop state (tail rest) result-event-list result-event-states)))
-                      (loop state (tail rest) (pair event result-event-list) result-event-states))))))))
+                          (loop state (tail rest) result-event-list event-states)))
+                      (loop state (tail rest) (pair event result-event-list) event-states))))))))
         (execute-events
           (l (time state)
             "integer seq-state -> seq-state
-            execute event-lists, update state and eventually leave out empty result event-lists"
+            execute event-lists, update state and possibly leave out empty result event-lists"
             (let loop
               ( (rest (seq-state-input state)) (state state) (result-events null)
-                (result-event-states null))
+                (event-states (seq-state-event-states state)))
               (if (null? rest)
-                (seq-state-update state #:input
-                  (reverse result-events) #:event-states result-event-states)
+                (seq-state-update state #:input (reverse result-events) #:event-states event-states)
                 (execute-event-list time state
-                  (first rest) (seq-state-event-states state)
+                  (first rest) event-states
                   (l (state event-list event-states)
                     (loop (tail rest) state
                       (if (null? event-list) result-events (pair event-list result-events))
-                      (append result-event-states event-states)))))))))
-      (l (time state c)
+                      event-states))))))))
+      (l* (time state #:optional (c pair))
         "integer:sample-offset list procedure:{results state -> any:seq-result} -> any:seq-result
-        the given procedure receives the results and the updated state and creates the final result of the call to seq"
+        the given procedure c receives the results and the updated state and returns the final result"
         (or
           (and-let*
             ( (state (index-ensure time state)) (state (index-advance time state))

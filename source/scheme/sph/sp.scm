@@ -449,7 +449,7 @@
     "number number number -> number
      phase generator that allows for high resolution modulation and non-linear transitions.
      * y: previous result or another starting value to continue from
-     * change: how fast the phase should progress
+     * change: how fast the phase should progress. frequency
      * phase-size: value at which the cycle should repeat
      example: (sp-phase 0.0 (/ (* 2 sp-pi) 200) (* 2 sp-pi))"
     (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y)))
