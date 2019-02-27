@@ -1,113 +1,89 @@
 (library (sph sp sequencer)
   (export
     seq
-    seq-default-mixer
-    seq-dict-bind
-    seq-dict-ref
-    seq-dict-refq
-    seq-dict-update
-    seq-dict-updateq
-    seq-event
-    seq-event-custom
+    seq-assoc-bind
+    seq-assoc-ref
+    seq-assoc-refq
+    seq-assoc-set
+    seq-assoc-set*
+    seq-assoc-setq
+    seq-assoc-setq*
     seq-event-f
-    seq-event-groups
     seq-event-list->events
-    seq-event-name
     seq-event-new
     seq-event-start
-    seq-event-update
     seq-events-merge
     seq-index-data
     seq-index-end
     seq-index-events
-    seq-index-f
     seq-index-f-new
     seq-index-i-f
     seq-index-i-f-new
-    seq-index-i-next
-    seq-index-new
-    seq-index-next
     seq-index-start
-    seq-index-update
-    seq-output
-    seq-output-new
     seq-state-add-events
-    seq-state-event-states
+    seq-state-custom
+    seq-state-events
     seq-state-index
+    seq-state-index-f
     seq-state-index-i
-    seq-state-input
+    seq-state-index-slot-count
+    seq-state-index-slot-duration
     seq-state-new
-    seq-state-options
-    seq-state-output
-    seq-state-rate
-    seq-state-update
-    seq-state-user-value)
+    seq-state-rate)
   (import
     (sph)
-    (sph alist)
+    (sph hashtable)
     (only (guile)
       compose
       inexact->exact
       make-list)
-    (only (rnrs base) set!)
-    (only (sph list)
-      list-sort-with-accessor
-      map-apply
-      map-integers)
+    (only (sph list) list-sort-with-accessor map-integers)
     (only (sph list other) group)
     (only (sph number) float-sum)
+    (only (sph sp) sp-samples-new)
     (only (sph vector)
-      any->vector
       vector-accessor
+      vector-setter
       vector-first)
     (only (srfi srfi-1) zip partition))
 
   (define sph-sp-sequencer-description
-    "seq calls sample generating functions at customisable times, shares state values between them and
-     mixes output values to create a single result.
-     * seq can return single sample values, sample arrays or any other data type.
-     * the return data type depends completely on the user supplied events-f and event-f functions.
-     * time is counted in samples because seconds dont always map exactly to samples; this is sometimes inconvenient but it is exact
-     * seq-state-rate is provided to access a sample-rate value that can be passed to seq-state-new
-     * index is used to not have to check all registered events for if they are due")
+    "seq calls sample generating functions at customisable times with custom data state.
+     * seq is supposed to return a samples vector of custom length
+     * time is counted in samples for exactness as seconds dont always map exactly to samples
+     * seq-state-rate is provided to access the sample-rate value provided with seq-state-new
+     * index is a vector for a time span where events are distributed over to not have to check all registered events every time
+     * events-f is the main user function and will be called for index durations when new events are needed")
 
-  ; options for performance optimisation:
-  ; * vector and vector-set! for states, hashtable and hashtable-set! for event-states
-  ; * execute event-lists in parallel (events shall only be able to access modulation parameters from previous samples)
-  ;
-  (define (seq-dict-ref state key) (alist-ref state key))
-  (define (seq-dict-update state . key/value) (apply alist-set-multiple state key/value))
-  (define (seq-dict-new) null)
-  (define-syntax-rule (seq-dict-refq state key) (seq-dict-ref state (quote key)))
+  (define (seq-assoc-ref a key) (ht-ref a key))
+  (define (seq-assoc-set a key value) (ht-set! a key value))
+  (define (seq-assoc-set* a . key/value) (apply ht-set-multiple! a key/value))
+  (define (seq-assoc-new) (ht-make-eqv))
+  (define-syntax-rule (seq-assoc-refq a key) (seq-assoc-ref a (quote key)))
 
-  (define-syntax-rule (seq-dict-updateq state key/value ...)
-    (apply seq-dict-update state (quote-odd key/value ...)))
+  (define-syntax-rule (seq-assoc-setq* a key/value ...)
+    (apply seq-assoc-update a (quote-odd key/value ...)))
 
-  (define-syntax-rule (seq-dict-bind state (id ...) body ...) (alist-bind state (id ...) body ...))
-  (define seq-index-data (vector-accessor 1))
+  (define-syntax-rule (seq-assoc-setq a key value) (seq-assoc-set a (quote key) value))
+  (define-syntax-rule (seq-assoc-bind a (id ...) body ...) (ht-bind a (id ...) body ...))
+  (define seq-state-events-f (vector-accessor 1))
+  (define seq-state-events (vector-accessor 2))
+  (define seq-state-index (vector-accessor 3))
+  (define seq-state-index-i (vector-accessor 4))
+  (define seq-state-index-f (vector-accessor 5))
+  (define seq-state-rate (vector-accessor 6))
+  (define seq-state-custom (vector-accessor 7))
+  (define seq-state-events-set! (vector-setter 2))
+  (define seq-state-index-set! (vector-setter 3))
+  (define seq-state-index-i-set! (vector-setter 4))
+  (define seq-index-start (vector-accessor 1))
   (define seq-index-end (vector-accessor 2))
-  (define seq-index-events (vector-accessor 3))
-  (define seq-index-f (vector-accessor 4))
+  (define seq-index-data (vector-accessor 3))
+  (define seq-index-events (vector-accessor 4))
   (define seq-index-i-f (vector-accessor 5))
-  (define seq-index-start (vector-accessor 6))
-
-  (define (seq-index-new data end events f i-f start)
-    (vector (q seq-index) data end events f i-f start))
-
-  (define* (seq-index-update a #:key data end events f i-f start)
-    (vector (or data (seq-index-data a)) (or end (seq-index-end a))
-      (or events (seq-index-events a)) (or f (seq-index-f a))
-      (or i-f (seq-index-i-f a)) (or start (seq-index-start a))))
-
-  (define (seq-index-next index time state)
-    (let (index-f (seq-index-f index))
-      (if index-f (index-f time state) (seq-index-f-new time state))))
-
-  (define (seq-index-i-next index time) ((seq-index-i-f index) time (seq-index-start index)))
-
-  (define (seq-index-add-events index events) "seq-index seq-events"
-    (if (null? events) events
-      (seq-index-update index #:events (seq-events-merge (seq-index-events index) events))))
+  (define seq-event-start (vector-accessor 1))
+  (define seq-event-f (vector-accessor 2))
+  (define seq-event-state (vector-accessor 3))
 
   (define (seq-index-i-f-new slot-duration)
     "integer -> procedure:{integer integer -> integer}
@@ -115,112 +91,64 @@
     (l (time index-start) (inexact->exact (truncate (/ (- time index-start) slot-duration)))
       (inexact->exact (truncate (/ (- time index-start) slot-duration)))))
 
-  (define (seq-index-f-new time state)
-    "number seq-state -> procedure
-     create a procedure that returns new event index for a time and state using
-     the procedure events-f from the state to get the events"
-    (let*
-      ( (options (seq-state-options state))
-        (slot-duration (alist-ref-q options index-slot-duration))
-        (slot-count (alist-ref-q options index-slot-count))
-        (index-duration (* slot-duration slot-count)) (index-i-f (seq-index-i-f-new slot-duration))
-        (events-f (seq-state-events-f state)))
-      (letrec
-        ( (index-f
-            (l (time state)
-              "number seq-state -> seq-index
-              create an alist where the key is the target index and the value are events for this index.
-              then add empty entries for intermediate indexes, remove keys and create an index-data vector
-              and the index-events list for out-of-index events"
+  (define (seq-index-f-new events-f slot-duration slot-count)
+    (let
+      ((index-duration (* slot-duration slot-count)) (index-i-f (seq-index-i-f-new slot-duration)))
+      (l (t s)
+        "integer seq-state -> seq-index
+         get a new index for time and state with events distributed over vector elements"
+        (let*
+          ( (end (+ t index-duration))
+            ; new events
+            (events-1 (events-f t s))
+            ; events scheduled in the state object
+            (events-2 (if (seq-state-index s) (seq-index-events (seq-state-index s)) null))
+            (slots
+              (group (append events-1 events-2)
+                ; -> ((integer:index-i event ...) ...)
+                (l (a)
+                  ; use zero for events outside current index time range
+                  (let (index-i (index-i-f (seq-event-start a) t))
+                    (if (< index-i slot-count) (+ 1 index-i) 0)))))
+            (slots (list-sort-with-accessor < first slots))
+            (slots
+              (let loop ((rest slots) (last-id 0))
+                ; add empty entries for inbetween slots
+                (if (null? rest) rest
+                  (let* ((a (first rest)) (id (first a)) (diff (- id last-id)))
+                    (if (> diff 1)
+                      (append (map-integers (- diff 1) (list null)) (pair a (loop (tail rest) id)))
+                      (pair a (loop (tail rest) id))))))))
+          ; create an alist where key is the numeric target index and the value are the events for a time range.
+          ; then fill with empty lists for intermediate indices, remove the alist keys and create an index-data vector
+          ; and an index-events list for out-of-index events
+          (if (null? slots) (vector (q seq-index) t end (vector) null (l a 0))
+            (begin
               (let*
-                ( (end (+ time index-duration))
-                  ; new events
-                  (events-1 (events-f time end state))
-                  ; scheduled events
-                  (events-2
-                    (if (seq-state-index state) (seq-index-events (seq-state-index state)) null))
-                  (slots
-                    (group (append events-1 events-2)
-                      ; -> ((index-i event ...) ...)
-                      (l (a)
-                        ; use zero for events outside current index time range
-                        (let (index-i (index-i-f (seq-event-start a) time))
-                          (if (< index-i slot-count) (+ 1 index-i) 0)))))
-                  (slots (list-sort-with-accessor < first slots))
-                  (slots
-                    (let loop ((rest slots) (last-id 0))
-                      ; add empty entries for inbetween slots
-                      (if (null? rest) rest
-                        (let* ((a (first rest)) (id (first a)) (diff (- id last-id)))
-                          (if (> diff 1)
-                            (append (map-integers (- diff 1) (list null))
-                              (pair a (loop (tail rest) id)))
-                            (pair a (loop (tail rest) id))))))))
-                (if (null? slots) (seq-index-new (vector) end null index-f (l a 0) time)
-                  (begin
-                    (let*
-                      ( (slots (if (zero? (first (first slots))) slots (pair (list 0) slots)))
-                        (events-1 (map tail (tail slots))) (events-2 (tail (first slots)))
-                        (events-1-length (length events-1))
-                        (events-1
-                          ; add empty entries for trailing slots
-                          (if (< events-1-length slot-count)
-                            (append events-1 (make-list (- slot-count events-1-length) null))
-                            events-1)))
-                      (seq-index-new (apply vector events-1) end events-2 index-f index-i-f time))))))))
-        index-f)))
-
-  (define-as seq-state-options-default alist-q index-slot-duration 10000 index-slot-count 4)
-  (define seq-state-user-value (vector-accessor 1))
-  (define seq-state-events-f (vector-accessor 2))
-  (define seq-state-event-states (vector-accessor 3))
-  (define seq-state-index (vector-accessor 4))
-  (define seq-state-index-i (vector-accessor 5))
-  (define seq-state-input (vector-accessor 6))
-  (define seq-state-mixer (vector-accessor 7))
-  (define seq-state-options (vector-accessor 8))
-  (define seq-state-output (vector-accessor 9))
-  (define seq-state-rate (vector-accessor 10))
+                ( (slots (if (zero? (first (first slots))) slots (pair (list 0) slots)))
+                  (events-1 (map tail (tail slots))) (events-2 (tail (first slots)))
+                  (events-1-length (length events-1))
+                  (events-1
+                    ; add empty entries for trailing slots
+                    (if (< events-1-length slot-count)
+                      (append events-1 (make-list (- slot-count events-1-length) null)) events-1)))
+                (vector (q seq-index) t end (apply vector events-1) events-2 index-i-f))))))))
 
   (define*
-    (seq-state-new events-f #:key event-states user-value index index-i input mixer options output
-      rate)
-    "procedure ? ... -> seq-state
+    (seq-state-new events-f #:key events index index-i index-f index-slot-duration index-slot-count
+      rate
+      custom)
+    "procedure _ ... -> seq-state
      create a new state object"
-    (vector (q seq-state) (or user-value null)
-      events-f (or event-states (seq-dict-new))
-      index (or index-i 0)
-      (or input null) (or mixer seq-default-mixer)
-      (or (and options (alist-merge seq-state-options-default options)) seq-state-options-default)
-      (or output null) (or rate 0)))
+    (vector (q seq-state) events-f
+      (or events null) index
+      (or index-i 0)
+      (or index-f (seq-index-f-new events-f (or index-slot-duration 10000) (or index-slot-count 4)))
+      rate custom))
 
-  (define*
-    (seq-state-update a #:key user-value events-f event-states index index-i input mixer options
-      output)
-    (vector (q seq-state) (or user-value (seq-state-user-value a))
-      (or events-f (seq-state-events-f a)) (or event-states (seq-state-event-states a))
-      (or index (seq-state-index a)) (or index-i (seq-state-index-i a))
-      (or input (seq-state-input a)) (or mixer (seq-state-mixer a))
-      (or options (seq-state-options a)) (or output (seq-state-output a))))
-
-  (define seq-event-state (vector-accessor 1))
-  (define seq-event-f (vector-accessor 2))
-  (define seq-event-groups (vector-accessor 3))
-  (define seq-event-name (vector-accessor 4))
-  (define seq-event-start (vector-accessor 5))
-  (define seq-event-id-next (let (counter 0) (nullary (set! counter (+ 1 counter)) counter)))
-
-  (define* (seq-event-new f #:optional start event-state name groups)
-    "procedure [integer false/((symbol . any) ...) symbol (symbol ...)] -> vector"
-    (vector (q seq-event) (or event-state (seq-dict-new))
-      f groups (or name (seq-event-id-next)) (or start 0)))
-
-  (define seq-event seq-event-new)
-
-  (define* (seq-event-update a #:key f start name groups event-state)
-    (vector (or start (seq-event-start a)) (or f (seq-event-f a))
-      (or name (seq-event-name a)) (or groups (seq-event-groups a))
-      (or event-state (seq-event-state a))))
+  (define* (seq-event-new f #:optional start event-state)
+    "procedure [integer false/seq-assoc] -> vector"
+    (vector (q seq-event) (or start 0) f (or event-state (seq-assoc-new))))
 
   (define (seq-event-list->events a) (if (null? a) a (if (vector? (first a)) (map list a) a)))
 
@@ -229,11 +157,11 @@
       (pair (if (null? a) (first b) (append (first a) (first b)))
         (seq-events-merge (if (null? a) a (tail a)) (tail b)))))
 
-  (define (seq-state-add-events state . events)
+  (define (seq-state-add-events s . events)
     "seq-state seq-event-list/seq-events ... -> state
-     add new events to either the current input list or the index"
+     add new events to either the active events list or the index"
     (let*
-      ( (index (seq-state-index state))
+      ( (index (seq-state-index s))
         (events
           (map
             (let (index-end (seq-index-end index))
@@ -241,127 +169,49 @@
                 (apply-values pair (partition (l (a) (< (seq-event-start a) index-end)) event-list))))
             (seq-event-list->events events))))
       (let ((soon (map first events)) (later (map tail events)))
-        (seq-state-update state #:input
-          (seq-events-merge (seq-state-input state) soon) #:index (seq-index-add-events index later)))))
-
-  (define seq-output-name (vector-accessor 1))
-  (define seq-output-data (vector-accessor 2))
-  (define seq-output-event-state (vector-accessor 3))
-  (define seq-output-event (vector-accessor 4))
-
-  (define* (seq-output-new name data event-state event)
-    (vector (q seq-output) name data event-state event))
-
-  (define* (seq-output data state #:optional event-state)
-    "integer/vector/any seq-state [list:alist] -> list
-     create the output structure that event-f must return.
-     seq-output creates event output, seq-output-new creates seq output"
-    (pairs data state (or event-state (seq-dict-new))))
-
-  (define (seq-default-mixer output)
-    "combines multiple event-f results, seq-output objects, into one seq result, which should be sample values.
-     sum the samples of each channel, clip and return a list with one sample per channel"
-    (if (null? output) #f
-      (list->vector
-        (map (l (a) (max -1 (min 1 a)))
-          (map-apply float-sum
-            (apply zip (map (compose vector->list any->vector seq-output-data) output)))))))
+        (seq-state-events-set! (seq-events-merge (seq-state-events s) soon))
+        (seq-state-index-set! (seq-events-merge (seq-index-events index) events)))))
 
   (define seq
-    (letrec
+    (let*
       ( (index-next
-          (l (time state)
-            "-> seq-state
-            call index-f to get the next index and add the
-            input event-f from the next index"
-            (let (index (seq-state-index state))
-              (and-let*
-                ( (index
-                    (if index (seq-index-next index time state)
-                      ((seq-index-f-new time state) time state)))
-                  (data (seq-index-data index))
-                  (input
-                    (if (zero? (vector-length data)) null
-                      (seq-event-list->events (vector-first data)))))
-                (seq-state-update state #:input
-                  (seq-events-merge (seq-state-input state) input) #:index index #:index-i 0)))))
-        (index-ensure
-          (l (time state)
-            "-> seq-state
-            ensure that current index data is available and eventually call index-f to get it"
-            (let (index (seq-state-index state)) (if index state (index-next time state)))))
-        (input-extend
-          (l (state index index-i)
-            "-> seq-state
-            add event-f from index to the current input list"
-            (let (input (seq-event-list->events (vector-ref (seq-index-data index) index-i)))
-              (seq-state-update state #:input
-                (seq-events-merge (seq-state-input state) input) #:index-i index-i))))
-        (index-advance
-          (l (time state)
-            "-> seq-state
-            eventually update the input event-f list from the current or a new index"
-            (let (index (seq-state-index state))
-              (let*
-                ((index-i (seq-state-index-i state)) (index-i-new (seq-index-i-next index time)))
-                (if (= index-i-new index-i) state
-                  (if (< time (seq-index-end index)) (input-extend state index index-i-new)
-                    (index-next time state)))))))
-        (clear-output (l (state) (seq-state-update state #:output null)))
-        (execute-event-list
-          (l (time state event-list event-states c)
-            "integer:sample-offset seq-state event-list procedure:{state event-list -> any:result} -> any
-            check every event for if it is due and eventually execute it, update state from its
-            result and remove it from the event-list if its event-f returns false"
-            (if (null? event-list) (c state event-list event-states)
-              ; for each event in input event list
-              (let loop
-                ( (state state) (rest event-list) (result-event-list null)
-                  (event-states event-states))
-                (if (null? rest) (c state result-event-list event-states)
-                  (let (event (first rest))
-                    ; check if event is due
-                    (if (<= (seq-event-start event) time)
-                      (let*
-                        ( (event-name (seq-event-name event))
-                          (event-output
-                            ( (seq-event-f event) time state
-                              event (- time (seq-event-start event))
-                              (or (and event-name (seq-dict-ref event-states event-name))
-                                (seq-event-state event)))))
-                        (if event-output
-                          (apply
-                            (l (data state . event-state)
-                              (loop
-                                (seq-state-update state #:output
-                                  (pair (seq-output-new event-name data event-state event)
-                                    (seq-state-output state)))
-                                (tail rest) (pair event result-event-list)
-                                (seq-dict-update event-states event-name event-state)))
-                            event-output)
-                          (loop state (tail rest) result-event-list event-states)))
-                      (loop state (tail rest) (pair event result-event-list) event-states))))))))
-        (execute-events
-          (l (time state)
+          (l (t s)
+            (and-let* ((index ((seq-state-index-f s) t s)) (data (seq-index-data index)))
+              (if (< 0 (vector-length data))
+                (seq-state-events-set! s
+                  (seq-events-merge (seq-state-events s)
+                    (seq-event-list->events (vector-first data)))))
+              (seq-state-index-set! s index) (seq-state-index-i-set! s 0) #t)))
+        (index-update
+          (l (t s)
             "integer seq-state -> seq-state
-            execute event-lists, update state and possibly leave out empty result event-lists"
-            (let loop
-              ( (rest (seq-state-input state)) (state state) (result-events null)
-                (event-states (seq-state-event-states state)))
-              (if (null? rest)
-                (seq-state-update state #:input (reverse result-events) #:event-states event-states)
-                (execute-event-list time state
-                  (first rest) event-states
-                  (l (state event-list event-states)
-                    (loop (tail rest) state
-                      (if (null? event-list) result-events (pair event-list result-events))
-                      event-states))))))))
-      (l* (time state #:optional (c pair))
-        "integer:sample-offset list procedure:{results state -> any:seq-result} -> any:seq-result
-        the given procedure c receives the results and the updated state and returns the final result"
-        (or
-          (and-let*
-            ( (state (index-ensure time state)) (state (index-advance time state))
-              (state (execute-events time state)))
-            (c ((seq-state-mixer state) (seq-state-output state)) (clear-output state)))
-          (c 0 state))))))
+            maybe update events from the current index or a new index"
+            (let (index (seq-state-index s))
+              (if index
+                (let
+                  ( (index-i (seq-state-index-i s))
+                    (index-i-new ((seq-index-i-f index) t (seq-index-start index))))
+                  (or (= index-i-new index-i)
+                    (and (< t (seq-index-end index))
+                      (begin
+                        ; add more events to current events
+                        (seq-state-events-set! s
+                          (seq-events-merge (seq-state-events s)
+                            (seq-event-list->events (vector-ref (seq-index-data index) index-i))))
+                        (seq-state-index-i-set! s index-i) #t))
+                    (index-next t s)))
+                (index-next t s))))))
+      (l* (t s size) "integer:sample-offset seq-state integer -> samples"
+        (if (index-update t s)
+          (let (output (sp-samples-new size))
+            (seq-state-events-set! s
+              (map
+                (l (event-list)
+                  (filter
+                    (l (a)
+                      (or (not (>= t (seq-event-start a)))
+                        ((seq-event-f a) t s output a (- t (seq-event-start a)) (seq-event-state a))))
+                    event-list))
+                (seq-state-events s)))
+            output)
+          #f)))))

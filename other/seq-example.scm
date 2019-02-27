@@ -1,3 +1,19 @@
+(import (sph) (sph sp sequencer) (sph sp) (sph hashtable))
+
+(define (events-f t s)
+  (debug-log "new events for" t)
+  (list
+    (seq-event-new
+      (l (t s output event age es) (debug-log (ht-alist es))
+        (and (< age 101) (sp-samples-set! output 0 1) (seq-assoc-setq es phase 3))))))
+
+(define s (seq-state-new events-f))
+(debug-log (seq 0 s 10) (seq 101000 s 10))
+
+
+;-- outdated --;
+
+
 (import (sph) (sph list) (sph vector) (sph sp) (sph sp sequencer))
 
 (define (sound-a time state event duration custom)
