@@ -488,8 +488,8 @@
       (if (and state (= (length points) (length state))) state (make-list (length points) #f))))
 
   (define (differences a)
-    "return a list of differences between each two subsequent values in a given list.
-     result length is (length a) minus one.
+    "return the differences between each pair of subsequent values in a given list.
+     result length is input length minus one.
      example: (differences (list 1 3 7 8 6)) -> (2 4 1 -2)"
     (pair-fold-right
       (l (a result) (if (null? (tail a)) result (pair (- (first (tail a)) (first a)) result))) null a))

@@ -5,11 +5,8 @@ basic guile scheme sound synthesis and processing toolset
 
 # features
 * generic port object for reading or writing to files or alsa devices
-* most other features of [sph-sp](https://github.com/sph-mn/sph-sp)
-* generator function that maps time to samples
-* sequencer for custom generator functions with designated shared state and unlimited multi-stage cross modulation
-* path drawing with line, bezier curve, elliptical arc and gap segments for adsr envelopes and more
-* the scheme code is purely functional
+* most features of [sph-sp](https://github.com/sph-mn/sph-sp)
+* helpers for sample vector processing
 
 # dependencies
 * run-time
@@ -57,61 +54,7 @@ installed files
 ; vector with one sample vector per channel
 (sp-port-write file (vector (f64vector 1 2 3 4)) 4)
 (sp-port-close file)
-
-;-- sp-generate helper
-(let*
-  ( (duration-seconds 2)
-    (result-states
-      (sp-generate sample-rate channel-count duration-seconds
-        ; segment-f - maps segments with samples eventually set by sample-f
-        (lambda (env time segment result . states)
-          (cons (cons segment result) states))
-        ; sample-f - sets samples in segments for time
-        (lambda (env time . states)
-          (cons (* 0.5 (sp-sine~ time 100)) states))
-        ; all following arguments are passed to segment-f/sample-f in "states"
-        (list)))
-    ; result-segments is a list of #(sample-vector:channel ...)
-    (result-segments (reverse (car result-states))))
-  (sp-segments->alsa result-segments sample-rate))
 ```
-
-sequencer usage example. three sines with different frequencies that start 150 samples apart and last at most 1000 samples. this example assumes gnuplot is installed to display a plot of the result.
-
-```scheme
-(import (sph) (sph list) (sph vector) (sph sp) (sph sp sequencer))
-
-(define (sound-a time state event duration custom)
-  "duration is time passed since the start of the event"
-    (and (< duration 1000) (seq-output (* 0.5 (sp-sine-of-width time 400)) state)))
-
-(define (sound-b time state event duration custom)
-  (and (< duration 1000) (seq-output (* 0.25 (sp-sine-of-width time 100)) state)))
-
-(define (sound-c time state event duration custom)
-  (and (< duration 1000) (seq-output (* 0.125 (sp-sine-of-width time 25)) state)))
-
-(define (events-f time end seq-state)
-  "this returns a list of next event objects to register.
-   events-f is called every (seq-state-duration seq-state) seconds.
-   this is so that not all events have to be created at once but can be created near the time they
-   are starting"
-  (list (seq-event a sound-a 0) (seq-event b sound-b 150) (seq-event c sound-c 300)))
-
-(let*
-  ( (seq-state (seq-state-new events-f))
-    (sample-rate 1000)
-    (results
-      ; what seq returns is actually free to choose and depends on the results of event functions
-      ; and seq-state-mixer.
-      ; in this example it returns vectors of one sample per channel.
-      (map-integers sample-rate
-        (l (time)
-          (seq time seq-state (l (results seq-state) results))))))
-  (sp-plot-samples (sp-samples-from-list (map vector-first results))))
-```
-
-sp-generate expects sample-f to return single sample numbers or vectors with one sample per channel
 
 # modules
 ## (sph sp)
@@ -142,19 +85,16 @@ sp-fold-file :: procedure integer string any ... -> any
 sp-fold-file-overlap :: procedure integer real string any ... -> any
 sp-fold-frames :: procedure samples integer real:0..1 any ... -> (any ...):custom
 sp-fold-integers :: integer procedure any ... -> (any ...)
-sp-generate :: integer integer procedure false/procedure any ... -> (any ...):states
+sp-generate :: integer integer false/procedure false/procedure any ... -> (any ...):states
 sp-grain-map :: samples/integer integer procedure false/state -> (false/samples:output . state)
 sp-hz->rads :: real -> real:radians-per-second
 sp-moving-average :: sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector
 sp-moving-average! :: result source previous next radius [start end] -> unspecified
-sp-noise-band :: size center width state #:transition #:noise-f ->
+sp-noise-band :: size center radius state #:transition #:noise-f #:is-reject ->
 sp-noise-exponential~ :: [state] ->
 sp-noise-normal~ :: [state] ->
 sp-noise-uniform~ :: [state] ->
 sp-overlap :: false/samples false/samples [real] -> false/samples
-sp-path :: number path-state [procedure -> result
-sp-path-new :: sample-rate (symbol param ...) ...
-sp-path-new-p :: number ((symbol:type any:parameter ...) ...) -> path-state
 sp-phase :: number number number -> number
 sp-phase-cycle :: integer integer false/previous-result -> (result _ ...):state
 sp-phase-sine-width :: integer:sample-count integer:sample-count -> real
@@ -193,7 +133,7 @@ sp-sample-format
 sp-sample-sum :: a ... ->
 sp-samples->list :: v ->
 sp-samples-apply-blackman-window :: a ->
-sp-samples-apply-hanning-window :: a ->
+sp-samples-apply-hann-window :: a ->
 sp-samples-copy :: xvector -> xvector
 sp-samples-copy-zero :: a ->
 sp-samples-copy-zero* :: a c ->
@@ -228,51 +168,11 @@ sp-spectrum :: samples -> #(real ...)
 sp-triangle :: x a b height ->
 sp-triangle~ :: integer:sample-count ... -> real:sample
 sp-window-blackman :: real width -> real
-sp-window-hanning :: offset size ->
+sp-window-hann :: offset size ->
 sp-windowed-sinc-bp-br :: samples real real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-bp-br! :: a b c d e f g h ->
 sp-windowed-sinc-bp-br-ir :: a b c d e ->
 sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
-```
-
-## (sph sp sequencer)
-```
-seq :: integer:sample-offset list procedure:{results state -> any:seq-result} -> any:seq-result
-seq-default-mixer :: output ->
-seq-event :: name f optional ...
-seq-event-f :: a ->
-seq-event-groups :: a ->
-seq-event-list->events :: a ->
-seq-event-name :: a ->
-seq-event-new :: procedure #:key integer (symbol ...) any -> vector
-seq-event-start :: a ->
-seq-event-update :: a #:f #:start #:name #:groups #:event-state ->
-seq-events-merge :: events:target events:source -> events
-seq-index-data :: a ->
-seq-index-end :: a ->
-seq-index-events :: a ->
-seq-index-f :: a ->
-seq-index-f-new :: number seq-state -> procedure
-seq-index-i-f :: a ->
-seq-index-i-f-new :: integer -> procedure:{integer integer -> integer}
-seq-index-i-next :: index time ->
-seq-index-new :: data end events f i-f start ->
-seq-index-next :: index time state ->
-seq-index-start :: a ->
-seq-index-update :: a #:data #:end #:events #:f #:i-f #:start ->
-seq-output :: symbol integer/vector/any seq-state list list:alist -> list
-seq-output-new :: name data event-state event ->
-seq-state-add-events :: seq-state seq-event-list/seq-events ... -> state
-seq-state-event-states :: a ->
-seq-state-index :: a ->
-seq-state-index-i :: a ->
-seq-state-input :: a ->
-seq-state-new :: procedure ? ... -> seq-state
-seq-state-options :: a ->
-seq-state-output :: a ->
-seq-state-rate :: a ->
-seq-state-update :: a #:user-value #:events-f #:event-states #:index #:index-i #:input #:mixer #:options #:output ->
-seq-state-user-value :: a ->
 ```
