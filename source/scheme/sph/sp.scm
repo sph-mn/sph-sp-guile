@@ -4,6 +4,15 @@
     f32vector-sum
     f64-nearly-equal?
     f64vector-sum
+    seq
+    seq-assoc
+    seq-assoc-bind
+    seq-assoc-new
+    seq-assocq
+    seq-event-f
+    seq-event-new
+    seq-event-start
+    seq-event-state
     sp-alsa-open
     sp-asymmetric-moving
     sp-asymmetric-moving-average
@@ -125,6 +134,7 @@
     (rnrs exceptions)
     (rnrs sorting)
     (sph)
+    (sph hashtable)
     (sph list)
     (sph math)
     (sph number)
@@ -747,7 +757,7 @@
   (define (sp-fold-frames f input frame-size overlap-factor . custom)
     "procedure samples integer real:0..1 any ... -> (any ...):custom
      f :: samples any:custom ... -> (custom ...)
-     call f with each overlapping frame of input samples and other custom values.
+     call f with each overlapping frame from input samples and other custom values.
      # example
      frame-size: 100, overlap-factor: 0.5, frames: -50..50 0..100 50..150"
     (let*
@@ -760,4 +770,38 @@
 
   (define (sp-samples-threshold a limit)
     "set to zero every sample with absolute value below threshold value"
-    (sp-samples-map (l (a) (absolute-threshold a limit)) a)))
+    (sp-samples-map (l (a) (absolute-threshold a limit)) a))
+
+  (define (seq-assoc-new) "a data structure for key-value associations where keys are symbols"
+    (ht-create-symbol))
+
+  (define-syntax-rules seq-assoc ((a key) (ht-ref a key))
+    ((a key value) (ht-set! a key value))
+    ((a key value key/value ...) (begin (ht-set! a key value) (seq-assoc key/value ...))))
+
+  (define-syntax-rules seq-assocq ((a key) (ht-ref a (quote key)))
+    ((a key value) (ht-set! a (quote key) value))
+    ((a key value key/value ...) (begin (ht-set! a (quote key) value) (seq-assoq key/value ...))))
+
+  (define-syntax-rule (seq-assoc-bind a (id ...) body ...) (ht-bind a (id ...) body ...))
+
+  (define* (seq-event-new f #:optional start event-state) "procedure [integer seq-assoc] -> vector"
+    ; event-state should be seq-assoc if used but is optional for cheap events
+    (vector (or start 0) f event-state))
+
+  (define seq-event-start (vector-accessor 0))
+  (define seq-event-f (vector-accessor 1))
+  (define seq-event-state (vector-accessor 2))
+
+  (define (seq time size events custom)
+    "integer integer (event ...) false/seq-assoc -> (samples events custom)
+     repeatedly calls functions starting from specified times and returns sample arrays of requested size.
+     the functions can write to the output sample array and stop being called after they return false"
+    (let (output (sp-samples-new size))
+      (list output
+        (filter
+          (l (a)
+            (or (not (>= time (seq-event-start a)))
+              ((seq-event-f a) time output a (- time (seq-event-start a)) (seq-event-state a))))
+          events)
+        custom))))
