@@ -10,9 +10,13 @@
     seq-assoc-new
     seq-assocq
     seq-event-f
+    seq-event-f-set!
     seq-event-new
     seq-event-start
+    seq-event-start-set!
     seq-event-state
+    seq-event-state-set!
+    seq-series
     sp-alsa-open
     sp-asymmetric-moving
     sp-asymmetric-moving-average
@@ -35,9 +39,9 @@
     sp-fold-file-overlap
     sp-fold-frames
     sp-fold-integers
-    sp-generate
     sp-grain-map
     sp-hz->rads
+    sp-map-fold-integers
     sp-moving-average
     sp-moving-average!
     sp-noise-band
@@ -106,7 +110,6 @@
     sp-samples-threshold
     sp-samples?
     sp-scheduler
-    sp-segment
     sp-segments->alsa
     sp-segments->file
     sp-sinc
@@ -147,6 +150,7 @@
 
   (load-extension "libguile-sph-sp" "sp_guile_init")
   (define sp-pi (* 4 (atan 1)))
+  (define sph-sp-description "sph-sp bindings and various other experimental features")
 
   (define-syntax-rule (sp-samples-new-f uv-create uv-make)
     ; a procedure similar to vector-make except that the fill value can be a procedure {index -> value} used to set the elements
@@ -378,48 +382,8 @@
   (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
   (define* (sp-noise-normal~ #:optional (state *random-state*)) (- (* 2 (random:normal state)) 1))
 
-  (define (sp-segment size channel-count f . states)
-    "integer integer false/procedure:{index states ... -> number/vector} -> (#(vector:channel ...) . states)
-     create a new segment with values set by calling f for each sample.
-     if the argument for f is false, return empty sample vectors"
-    (let (result (list->vector (map-integers channel-count (l a (sp-samples-new size 0)))))
-      (if f
-        (let loop ((index 0) (states states))
-          (if (< index size)
-            (let* ((data-and-states (apply f index states)) (data (first data-and-states)))
-              (cond
-                ((number? data) (sp-samples-set! (vector-first result) index data))
-                ( (vector? data)
-                  (vector-each-with-index
-                    (l (channel data) (sp-samples-set! (vector-ref result channel) index data)) data))
-                (else (raise (q sp-invalid-sample-f-result))))
-              (loop (+ 1 index) (tail data-and-states)))
-            (pair result states)))
-        (pair result states))))
-
   (define (sp-clip~ a) "eventually adjust value to not exceed -1 or 1"
     (if (< 0 a) (min 1.0 a) (max -1.0 a)))
-
-  (define (sp-generate channel-count sample-rate duration segment-f sample-f . states)
-    "integer integer false/procedure false/procedure any ... -> (any ...):states
-     helper to create sample vectors.
-     calls segment-f for the samples for each second in duration. calls sample-f for each sample.
-     if sample-f is false then segment-f is called with new segment data set to zero.
-     segment-f :: env offset:seconds segment custom ... -> (any ...):state
-     sample-f :: env offset:sample-count custom ... -> (sample-value any:state-value ...)"
-    (let (env (vector sample-rate channel-count))
-      (apply sp-fold-integers duration
-        (l (offset . states)
-          (apply
-            (or segment-f
-              (l (env time segment result . states) (pair (pair segment result) states)))
-            env offset
-            (apply sp-segment sample-rate
-              channel-count
-              (and sample-f
-                (l (index . states) (apply sample-f env (+ index (* offset sample-rate)) states)))
-              states)))
-        states)))
 
   (define (sp-rectangular x a b c d)
     "integer:sample-count ... -> real:sample
@@ -556,7 +520,7 @@
   (define (sp-fold-integers count f . init)
     "integer procedure any ... -> (any ...)
      f :: integer any:custom ... -> (any:custom ...)
-     fold over integers from 0 to count minus 1 with zero or more separate state variables"
+     fold over integers from 0 to count minus 1 with zero or more custom state variables"
     (let loop ((a 0) (b init)) (if (< a count) (loop (+ 1 a) (apply f a b)) b)))
 
   (define (sp-sample-align f update-f x width . custom)
@@ -792,6 +756,9 @@
   (define seq-event-start (vector-accessor 0))
   (define seq-event-f (vector-accessor 1))
   (define seq-event-state (vector-accessor 2))
+  (define seq-event-start-set! (vector-setter 0))
+  (define seq-event-f-set! (vector-setter 1))
+  (define seq-event-state-set! (vector-setter 2))
 
   (define (seq time size events custom)
     "integer integer (event ...) false/seq-assoc -> (samples events custom)
@@ -804,4 +771,19 @@
             (or (not (>= time (seq-event-start a)))
               ((seq-event-f a) time output a (- time (seq-event-start a)) (seq-event-state a))))
           events)
-        custom))))
+        custom)))
+
+  (define (sp-map-fold-integers count f . custom)
+    "f :: integer custom ... -> (map-result custom ...)
+     map the first result element and fold the rest"
+    (let loop ((i 0) (map-result null) (custom custom))
+      (if (< i count)
+        (apply (l (a . custom) (loop (+ 1 i) (pair a map-result) custom)) (apply f i custom))
+        (pair (reverse map-result) custom))))
+
+  (define (seq-series block-count block-size events)
+    "integer integer -> (samples ...)
+     call seq repeatedly to create a list of blocks of specified count and size"
+    (first
+      (sp-map-fold-integers block-count
+        (l (t . events) (apply seq (* t block-size) block-size events)) events #f))))
