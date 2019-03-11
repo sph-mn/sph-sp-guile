@@ -285,14 +285,14 @@
     "samples real real boolean false/convolution-filter-state -> samples
      state is still eventually going to be modified"
     (let (out (sp-samples-copy-zero in))
-      (pair out (sp-windowed-sinc-lp-hp! out in cutoff transition is-high-pass state))))
+      (list out (sp-windowed-sinc-lp-hp! out in cutoff transition is-high-pass state))))
 
   (define* (sp-windowed-sinc-bp-br in cutoff-l cutoff-h transition-l transition-h is-reject state)
     "samples real real real boolean false/convolution-filter-state -> samples
      like sp-windowed-sinc-bp-br! but creates a new output samples vector as long as the input.
      state is still eventually going to be modified"
     (let (out (sp-samples-copy-zero in))
-      (pair out
+      (list out
         (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h is-reject state))))
 
   (define* (sp-plot-samples-display-file file-path #:key (type (q lines)) (color "blue"))
@@ -566,12 +566,14 @@
                   (sp-samples-ref b (- index overlap-length))))))))))
 
   (define*
-    (sp-noise-band size center radius state #:key (transition 0.08) (noise-f sp-noise-uniform~)
+    (sp-noise-band size center radius state #:key (transition-l 0.08) (transition-h 0.08)
+      (noise-f sp-noise-uniform~)
       is-reject)
-    "get a sample vector with noise in a specific frequency band.
+    "-> (sample . noise-band-state)
+     get a sample vector with noise in a specific frequency band.
      center, radius and transition are as a fraction of the sample rate from 0 to 0.5"
     (sp-windowed-sinc-bp-br (sp-samples-new size (l (index) (noise-f))) (- center radius)
-      (+ center radius) transition transition #f state))
+      (+ center radius) transition-l transition-h #f state))
 
   (define (sp-sine-of-width x width)
     "return a value for a repeating sine with given sample width at sample offset x"
@@ -760,18 +762,12 @@
   (define seq-event-f-set! (vector-setter 1))
   (define seq-event-state-set! (vector-setter 2))
 
-  (define (seq time size events custom)
-    "integer integer (event ...) false/seq-assoc -> (samples events custom)
+  (define (seq time output size events)
+    "integer (samples ...) integer (event ...) any -> events
      repeatedly calls functions starting from specified times and returns sample arrays of requested size.
      the functions can write to the output sample array and stop being called after they return false"
-    (let (output (sp-samples-new size))
-      (list output
-        (filter
-          (l (a)
-            (or (not (>= time (seq-event-start a)))
-              ((seq-event-f a) time output a (- time (seq-event-start a)) (seq-event-state a))))
-          events)
-        custom)))
+    (filter (l (a) (or (not (>= time (seq-event-start a))) ((seq-event-f a) time output size a)))
+      events))
 
   (define (sp-map-fold-integers count f . custom)
     "f :: integer custom ... -> (map-result custom ...)
@@ -781,9 +777,11 @@
         (apply (l (a . custom) (loop (+ 1 i) (pair a map-result) custom)) (apply f i custom))
         (pair (reverse map-result) custom))))
 
-  (define (seq-series block-count block-size events)
+  (define (seq-series channel-count block-count block-size events)
     "integer integer -> (samples ...)
      call seq repeatedly to create a list of blocks of specified count and size"
-    (first
-      (sp-map-fold-integers block-count
-        (l (t . events) (apply seq (* t block-size) block-size events)) events #f))))
+    (sp-map-fold-integers block-count
+      (l (t events)
+        (let (output (map-integers channel-count (l (a) (sp-samples-new block-size))))
+          (list output (seq (* t block-size) output block-size events))))
+      events)))
