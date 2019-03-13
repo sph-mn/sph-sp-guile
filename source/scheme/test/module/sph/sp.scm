@@ -2,6 +2,7 @@
   (import
     (sph uniform-vector)
     (sph number)
+    (sph string)
     (sph sp)
     (sph list)
     (rnrs bytevectors))
@@ -26,7 +27,7 @@
         (data
           ; make data for channels filled with samples of value n
           (list->vector
-            (map-integers channel-count (l (n) (sp-samples-new segment-size (* (+ n 1) 0.1)))))))
+            (map-integers channel-count (l (n) (sp-samples-new segment-size (* (+ n 1) 0.5)))))))
       (assert-and
         (assert-equal "properties" (list #f 0)
           (list (sp-port-input? file-out) (sp-port-position file-out)))
@@ -98,12 +99,54 @@
 
   (define-test (sp-samples-extract)
     (let (series (sp-samples-from-list (map-integers 10 identity)))
-      (and (equal? (list 8.0) (sp-samples->list (sp-samples-extract series 8 1 #t)))
-        (equal? (list 8.0 9.0) (sp-samples->list (sp-samples-extract series 8 6 #f)))
+      (and (equal? (list 8.0) (sp-samples->list (sp-samples-extract-padded series 8 1)))
+        (equal? (list 8.0 9.0) (sp-samples->list (sp-samples-extract series 8 6)))
         (equal? (list 8.0 9.0 0.0 0.0 0.0 0.0)
-          (sp-samples->list (sp-samples-extract series 8 6 #t))))))
+          (sp-samples->list (sp-samples-extract-padded series 8 6))))))
 
-  (test-execute-procedures-lambda (sp-samples-extract) (sp-convolution-filter)
+  (define-test (sp-convolution-filter-2)
+    "test for the case that the input is smaller than the impulse response"
+    (define (test-convolve)
+      (let*
+        ( (samples (list 1 2 3 4 5)) (ir (sp-samples-from-list (list 2 4 8 16 32 64)))
+          (convolve
+            (l (samples state)
+              (let*
+                ( (samples (sp-samples-from-list (any->list samples)))
+                  (output (sp-samples-copy-zero samples)))
+                (list output (sp-convolution-filter! output samples (l a ir) null state)))))
+          (result-a
+            (reverse
+              (first
+                (fold-multiple
+                  (l (sample result state)
+                    (apply (l (sample state) (list (pair sample result) state))
+                      (convolve sample state)))
+                  samples null #f))))
+          (result-b (first (convolve samples #f)))
+          (result-a (sp-samples-from-list (apply append (map sp-samples->list result-a)))))
+        (equal? (any->string result-b) (any->string result-a))))
+    (define (test-filter)
+      (let*
+        ( (samples (list 1 2 3 4 5)) (ir (sp-samples-from-list (list 2 4 8 16 32 64)))
+          (filter
+            (l (samples state)
+              (let (samples (sp-samples-from-list (any->list samples)))
+                (sp-windowed-sinc-bp-br samples 0.1 0.4 0.08 0.08 #f state))))
+          (result-a
+            (reverse
+              (first
+                (fold-multiple
+                  (l (sample result state)
+                    (apply (l (sample state) (list (pair sample result) state))
+                      (filter sample state)))
+                  samples null #f))))
+          (result-b (first (filter samples #f)))
+          (result-a (sp-samples-from-list (apply append (map sp-samples->list result-a)))))
+        (equal? (any->string result-b) (any->string result-a))))
+    (assert-and (assert-true (test-convolve)) (assert-true (test-filter))))
+
+  (test-execute-procedures-lambda (sp-convolution-filter-2) (sp-convolution-filter)
     (sp-convolve) (sp-windowed-sinc ((2 2 2 2) 0.1 0.08) #t)
     (sp-moving-average
       ; no prev/next
@@ -118,4 +161,4 @@
       ; no prev but next
       ((2 1 0 3) #f (5 9) 4)
       (1.2222222089767456 2.222222328186035 2.222222328186035 2.222222328186035))
-    sp-file sp-fft))
+    sp-file sp-fft (sp-samples-extract)))

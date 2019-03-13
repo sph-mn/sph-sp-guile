@@ -168,7 +168,9 @@
     (sp-convolution-filter
       (scm->sp-samples scm-in)
       (scm->sp-samples-length scm-in) scm-c-sp-ir-f ir-f-arguments 2 &state (scm->sp-samples scm-out)))
-  (if (not (scm-is-true scm-state)) (set scm-state (scm-from-sp-convolution-filter-state state)))
+  (if (not (scm-is-true scm-state))
+    (begin
+      (set scm-state (scm-from-sp-convolution-filter-state state))))
   (label exit
     (scm-from-status-return scm-state)))
 
