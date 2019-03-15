@@ -1,12 +1,11 @@
-basic guile scheme sound synthesis and processing toolset
+experimental guile scheme sound synthesis and processing toolset
 
-* create sample arrays and write them to files or alsa sound output using a generic port object
-* various exemplary utilities, for example for convolution and filters
-
-# features
-* generic port object for reading or writing to files or alsa devices
+* create sample arrays and write them to files
 * most features of [sph-sp](https://github.com/sph-mn/sph-sp)
-* helpers for sample vector processing
+  * filters and convolution that work on blocks of data series
+  * fast fourier transform
+  * file output
+* experimental utilities for sequencing, synthesis and analysis
 
 # dependencies
 * run-time
@@ -45,10 +44,6 @@ installed files
 (define channel-count 1)
 
 ;-- basic io
-(define dac (sp-alsa-open "default" sp-port-mode-write channel-count sample-rate))
-(sp-port-write dac (vector (f64vector 1 2 3 4)) 4)
-(sp-port-close dac)
-
 (define file (sp-file-open "/tmp/sp-file.wav" sp-port-mode-write channel-count sample-rate))
 
 ; vector with one sample vector per channel
@@ -58,12 +53,23 @@ installed files
 
 # modules
 ## (sph sp)
-```
 differences :: a ->
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
 f64vector-sum :: f64vector [start end] -> number
-sp-alsa-open :: device-name mode channel-count sample-rate [latency] -> sp-port
+seq :: integer (samples ...) integer (event ...) any -> events
+seq-assoc :: a key
+seq-assoc-bind :: a (id ...) body ...
+seq-assoc-new ::  ->
+seq-assocq :: a key
+seq-event-f :: a ->
+seq-event-f-set! :: a value ->
+seq-event-new :: procedure [integer seq-assoc] -> vector
+seq-event-start :: a ->
+seq-event-start-set! :: a value ->
+seq-event-state :: a ->
+seq-event-state-set! :: a value ->
+seq-series :: integer integer -> (samples ...)
 sp-asymmetric-moving :: procedure real integer list -> (any:result-value . state)
 sp-asymmetric-moving-average :: real integer list -> (result-value . state)
 sp-asymmetric-moving-median :: real integer list -> (result-value . state)
@@ -75,22 +81,36 @@ sp-convolve :: a b [carryover carryover-len] ->
 sp-convolve! :: out a b carryover [carryover-len] -> unspecified
 sp-duration->sample-count :: seconds sample-rate ->
 sp-factor->rads :: a sample-rate ->
-sp-fft-resynth :: f a ->
-sp-fftr :: sample-vector:values-at-times -> #(complex ...):frequencies
-sp-fftri :: #(complex ...):frequencies -> sample-vector:values-at-times
-sp-file-open :: path mode [channel-count sample-rate] -> sp-port
+sp-fft :: #(complex ...) -> #(complex ...)
+sp-fft-resynth :: samples procedure:{#(complex ...) -> #(complex ...)} -> samples
+sp-ffti :: #(complex ...) -> #(complex ...)
+sp-fftr :: samples -> #(complex ...)
+sp-fftri :: #(complex ...) -> samples
+sp-file-channel-count :: sp-file -> integer
+sp-file-close :: sp-file -> boolean
+sp-file-input? :: sp-file -> boolean
+sp-file-mode-read
+sp-file-mode-read-write
+sp-file-mode-write
+sp-file-open :: path mode [channel-count sample-rate] -> sp-file
+sp-file-position :: sp-file -> integer
+sp-file-position-set :: sp-file integer:sample-offset -> boolean
+sp-file-position? :: sp-file -> boolean
+sp-file-read :: sp-file integer:sample-count -> (sample-vector ...):channel-data
+sp-file-sample-rate :: sp-file -> integer
+sp-file-write :: sp-file (sample-vector ...):channel-data [integer:sample-count] -> unspecified
 sp-filter-bank :: samples ((cutoff-l cutoff-h transition-l transition-h) ...) list -> ((samples ...) . state)
 sp-float-sum :: a ... ->
 sp-fold-file :: procedure integer string any ... -> any
 sp-fold-file-overlap :: procedure integer real string any ... -> any
 sp-fold-frames :: procedure samples integer real:0..1 any ... -> (any ...):custom
 sp-fold-integers :: integer procedure any ... -> (any ...)
-sp-generate :: integer integer false/procedure false/procedure any ... -> (any ...):states
 sp-grain-map :: samples/integer integer procedure false/state -> (false/samples:output . state)
 sp-hz->rads :: real -> real:radians-per-second
+sp-map-fold-integers :: count f custom ... ->
 sp-moving-average :: sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector
 sp-moving-average! :: result source previous next radius [start end] -> unspecified
-sp-noise-band :: size center radius state #:transition #:noise-f #:is-reject ->
+sp-noise-band :: -> (sample . noise-band-state)
 sp-noise-exponential~ :: [state] ->
 sp-noise-normal~ :: [state] ->
 sp-noise-uniform~ :: [state] ->
@@ -110,18 +130,6 @@ sp-plot-segments->file :: (#(vector:channel ...) ...) string ->
 sp-plot-spectrum :: a ->
 sp-plot-spectrum->file :: a path ->
 sp-plot-spectrum-display-file :: path ->
-sp-port-channel-count :: sp-port -> integer
-sp-port-close :: sp-port -> boolean
-sp-port-input? :: sp-port -> boolean
-sp-port-mode-read
-sp-port-mode-read-write
-sp-port-mode-write
-sp-port-position :: sp-port -> integer
-sp-port-position-set :: sp-port integer:sample-offset -> boolean
-sp-port-position? :: sp-port -> boolean
-sp-port-read :: sp-port integer:sample-count -> (sample-vector ...):channel-data
-sp-port-sample-rate :: sp-port -> integer
-sp-port-write :: sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified
 sp-rads->factor :: real integer -> real
 sp-rads->hz :: real -> real:hertz
 sp-rectangle~ :: integer:sample-count ... -> real:sample
@@ -129,7 +137,6 @@ sp-rectangular :: integer:sample-count ... -> real:sample
 sp-sample-align :: procedure procedure integer integer any ... -> (result-value . (x width custom ...))
 sp-sample-align-list :: size f update-f custom ... ->
 sp-sample-count->duration :: sample-count sample-rate ->
-sp-sample-format
 sp-sample-sum :: a ... ->
 sp-samples->list :: v ->
 sp-samples-apply-blackman-window :: a ->
@@ -155,8 +162,6 @@ sp-samples-split :: samples integer -> (samples ...)
 sp-samples-threshold :: a limit ->
 sp-samples? :: obj ->
 sp-scheduler :: additions integer state/false -> (output:samples/false state)
-sp-segment :: integer integer false/procedure:{index states ... -> number/vector} -> (#(vector:channel ...) . states)
-sp-segments->alsa :: (#(vector:channel ...) ...) -> unspecified
 sp-segments->file :: (#(#(sample ...):channel ...):segment ...) string -> unspecified
 sp-sinc :: a ->
 sp-sine-of-width :: x width ->
@@ -175,4 +180,6 @@ sp-windowed-sinc-bp-br-ir :: a b c d e ->
 sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
-```
+
+## (sph sp vectorise)
+sp-vectorise :: samples [integer] -> (series-element ...)

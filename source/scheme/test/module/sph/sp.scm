@@ -23,31 +23,21 @@
 
   (define-test (sp-file) (if (file-exists? test-env-file-path) (delete-file test-env-file-path))
     (let*
-      ( (file-out (sp-file-open test-env-file-path sp-port-mode-write channel-count sample-rate))
+      ( (file-out (sp-file-open test-env-file-path sp-file-mode-write channel-count sample-rate))
         (data
           ; make data for channels filled with samples of value n
           (list->vector
             (map-integers channel-count (l (n) (sp-samples-new segment-size (* (+ n 1) 0.5)))))))
       (assert-and
         (assert-equal "properties" (list #f 0)
-          (list (sp-port-input? file-out) (sp-port-position file-out)))
+          (list (sp-file-input? file-out) (sp-file-position file-out)))
         (assert-true "write"
-          (= segment-size (sp-port-write file-out data segment-size) (sp-port-position file-out)))
-        (assert-true "close" (and (sp-port-close file-out)))
+          (= segment-size (sp-file-write file-out data segment-size) (sp-file-position file-out)))
+        (assert-true "close" (and (sp-file-close file-out)))
         (let*
-          ( (file-in (sp-file-open test-env-file-path sp-port-mode-read))
-            (test-result (assert-true "read" (equal? data (sp-port-read file-in segment-size)))))
-          (sp-port-close file-in) test-result))))
-
-  (define-test (sp-alsa)
-    (let (out (sp-alsa-open-output "default" channel-count sample-rate))
-      (let loop ((index 0) (sample-offset 0))
-        (if (< sample-offset (* duration sample-rate))
-          (begin
-            (sp-alsa-write out segment-size
-              (adjust-volume volume (get-sine-segment index sample-offset)))
-            (loop (+ 1 index) (+ segment-size sample-offset)))
-          (sp-port-close out)))))
+          ( (file-in (sp-file-open test-env-file-path sp-file-mode-read))
+            (test-result (assert-true "read" (equal? data (sp-file-read file-in segment-size)))))
+          (sp-file-close file-in) test-result))))
 
   (define-test (sp-fft) (sp-samples? (sp-fftri (sp-fftr test-samples))))
 

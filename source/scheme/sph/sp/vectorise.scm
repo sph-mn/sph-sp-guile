@@ -12,9 +12,7 @@
       floor
       inexact->exact
       display)
-    (only (srfi srfi-1) drop split-at)
-    ;(sph other)
-    )
+    (only (srfi srfi-1) drop split-at))
 
   (define sph-sp-vectorise-description
     "experimental. convert a time/magnitude samples array to sines and noise parameters that can be used to approximately recreate the sound.

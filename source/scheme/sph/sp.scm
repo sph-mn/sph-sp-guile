@@ -17,7 +17,6 @@
     seq-event-state
     seq-event-state-set!
     seq-series
-    sp-alsa-open
     sp-asymmetric-moving
     sp-asymmetric-moving-average
     sp-asymmetric-moving-median
@@ -34,7 +33,20 @@
     sp-ffti
     sp-fftr
     sp-fftri
+    sp-file-channel-count
+    sp-file-close
+    sp-file-input?
+    sp-file-mode-read
+    sp-file-mode-read-write
+    sp-file-mode-write
     sp-file-open
+    sp-file-position
+    sp-file-position-set
+    sp-file-position?
+    sp-file-read
+    sp-file-sample-rate
+    sp-file-write
+    sp-file?
     sp-filter-bank
     sp-float-sum
     sp-fold-file
@@ -66,19 +78,6 @@
     sp-plot-spectrum
     sp-plot-spectrum->file
     sp-plot-spectrum-display-file
-    sp-port-channel-count
-    sp-port-close
-    sp-port-input?
-    sp-port-mode-read
-    sp-port-mode-read-write
-    sp-port-mode-write
-    sp-port-position
-    sp-port-position-set
-    sp-port-position?
-    sp-port-read
-    sp-port-sample-rate
-    sp-port-write
-    sp-port?
     sp-rads->factor
     sp-rads->hz
     sp-rectangle~
@@ -111,7 +110,6 @@
     sp-samples-threshold
     sp-samples?
     sp-scheduler
-    sp-segments->alsa
     sp-segments->file
     sp-sinc
     sp-sine!
@@ -199,20 +197,10 @@
     "(#(#(sample ...):channel ...):segment ...) string -> unspecified
      write chunks of audio data to file. first argument is a list of lists of sample vectors per channel"
     (if (not (null? a))
-      (let (out (sp-file-open path sp-port-mode-write (vector-length (first a)) sample-rate))
-        (each (l (segment) (sp-port-write out segment (sp-samples-length (vector-first segment))))
+      (let (out (sp-file-open path sp-file-mode-write (vector-length (first a)) sample-rate))
+        (each (l (segment) (sp-file-write out segment (sp-samples-length (vector-first segment))))
           a)
-        (sp-port-close out))))
-
-  (define* (sp-segments->alsa a sample-rate #:optional (device "default") (latency 4096))
-    "(#(vector:channel ...) ...) -> unspecified
-     write chunks of audio data to an alsa device"
-    (if (not (null? a))
-      (let
-        (out (sp-alsa-open device sp-port-mode-write (vector-length (first a)) sample-rate latency))
-        (each (l (segment) (sp-port-write out segment (sp-samples-length (vector-first segment))))
-          a)
-        (sp-port-close out))))
+        (sp-file-close out))))
 
   (define* (sp-moving-average source prev next distance #:optional start end)
     "sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector"
@@ -255,7 +243,7 @@
 
   (define (sp-plot-samples->file a path)
     (call-with-output-file path
-      (l (port) (each (l (a) (display-line a port)) (sp-samples->list a)))))
+      (l (file) (each (l (a) (display-line a file)) (sp-samples->list a)))))
 
   (define (sp-plot-samples a . display-args)
     "samples [#:type #:color] -> unspecified
@@ -295,7 +283,7 @@
   (define (sp-plot-spectrum->file a path)
     "apply sp-spectrum on \"a\" and write the result to file at path"
     (call-with-output-file path
-      (l (port) (vector-each (l (a) (display-line a port)) (sp-spectrum a)))))
+      (l (file) (vector-each (l (a) (display-line a file)) (sp-spectrum a)))))
 
   (define (sp-plot-spectrum a)
     (let (path (tmpnam)) (sp-plot-spectrum->file a path) (sp-plot-fft-display-file path)))
@@ -316,7 +304,7 @@
 
   (define (sp-plot-fft->file a path) "write the magnitudes of the fft result to file at path"
     (call-with-output-file path
-      (l (port) (vector-each (l (a) (display-line (magnitude a) port)) a))))
+      (l (file) (vector-each (l (a) (display-line (magnitude a) file)) a))))
 
   (define (sp-plot-fft a)
     (let (path (tmpnam)) (sp-plot-fft->file a path) (sp-plot-fft-display-file path)))
@@ -550,15 +538,15 @@
      f :: #(samples ...):channels custom ... -> custom
      fold over sample vectors read from file"
     (let*
-      ( (input (sp-file-open path sp-port-mode-read))
+      ( (input (sp-file-open path sp-file-mode-read))
         (result
-          (let loop ((a (sp-port-read input segment-size)))
+          (let loop ((a (sp-file-read input segment-size)))
             (if (vector? a)
               (apply f a
                 (if (= segment-size (sp-samples-length (vector-first a)))
-                  (loop (sp-port-read input segment-size)) custom))
+                  (loop (sp-file-read input segment-size)) custom))
               custom))))
-      (sp-port-close input) result))
+      (sp-file-close input) result))
 
   (define (sp-fold-file-overlap f segment-size overlap-factor path . custom)
     "procedure integer real string any ... -> any
