@@ -1,6 +1,6 @@
 experimental guile scheme sound synthesis and processing toolset
 
-* create sample arrays and write them to files
+* read/write samples from/to audio files
 * most features of [sph-sp](https://github.com/sph-mn/sph-sp)
   * filters and convolution that work on blocks of data series
   * fast fourier transform
@@ -53,6 +53,7 @@ installed files
 
 # modules
 ## (sph sp)
+```
 differences :: a ->
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
@@ -180,6 +181,9 @@ sp-windowed-sinc-bp-br-ir :: a b c d e ->
 sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
+```
 
 ## (sph sp vectorise)
+```
 sp-vectorise :: samples [integer] -> (series-element ...)
+```
