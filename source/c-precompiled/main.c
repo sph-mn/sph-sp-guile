@@ -1,23 +1,23 @@
 #include "./helper.c"
 #include "./foreign/sph/float.c"
-SCM scm_sp_port_channel_count(SCM scm_a) { return ((scm_from_sp_channel_count(((scm_to_sp_port(scm_a))->channel_count)))); };
-SCM scm_sp_port_sample_rate(SCM scm_a) { return ((scm_from_sp_sample_rate(((scm_to_sp_port(scm_a))->sample_rate)))); };
-SCM scm_sp_port_position_p(SCM scm_a) { return ((scm_from_bool((sp_port_bit_position & (scm_to_sp_port(scm_a))->flags)))); };
-SCM scm_sp_port_input_p(SCM scm_a) { return ((scm_from_bool((sp_port_bit_input & (scm_to_sp_port(scm_a))->flags)))); };
-/** returns the current port position offset in number of samples */
-SCM scm_sp_port_position(SCM scm_a) {
+SCM scm_sp_file_channel_count(SCM scm_a) { return ((scm_from_sp_channel_count(((scm_to_sp_file(scm_a))->channel_count)))); };
+SCM scm_sp_file_sample_rate(SCM scm_a) { return ((scm_from_sp_sample_rate(((scm_to_sp_file(scm_a))->sample_rate)))); };
+SCM scm_sp_file_position_p(SCM scm_a) { return ((scm_from_bool((sp_file_bit_position & (scm_to_sp_file(scm_a))->flags)))); };
+SCM scm_sp_file_input_p(SCM scm_a) { return ((scm_from_bool((sp_file_bit_input & (scm_to_sp_file(scm_a))->flags)))); };
+/** returns the current file position offset in number of samples */
+SCM scm_sp_file_position(SCM scm_a) {
   sp_sample_count_t position;
-  sp_port_position((scm_to_sp_port(scm_a)), (&position));
+  sp_file_position((scm_to_sp_file(scm_a)), (&position));
   return ((scm_from_sp_sample_count(position)));
 };
-SCM scm_sp_port_close(SCM a) {
+SCM scm_sp_file_close(SCM a) {
   status_declare;
-  status = sp_port_close((scm_to_sp_port(a)));
+  status = sp_file_close((scm_to_sp_file(a)));
   scm_from_status_return(SCM_UNSPECIFIED);
 };
-SCM scm_sp_port_position_set(SCM scm_port, SCM scm_sample_offset) {
+SCM scm_sp_file_position_set(SCM scm_file, SCM scm_sample_offset) {
   status_declare;
-  status = sp_port_position_set((scm_to_sp_port(scm_port)), (scm_to_size_t(scm_sample_offset)));
+  status = sp_file_position_set((scm_to_sp_file(scm_file)), (scm_to_size_t(scm_sample_offset)));
   scm_from_status_return(SCM_UNSPECIFIED);
 };
 SCM scm_sp_convolve_x(SCM out, SCM a, SCM b, SCM carryover, SCM carryover_len) {
@@ -144,102 +144,90 @@ SCM scm_sp_moving_average_x(SCM scm_result, SCM scm_source, SCM scm_prev, SCM sc
 exit:
   scm_from_status_return(SCM_UNSPECIFIED);
 };
-SCM scm_sp_fftr(SCM scm_input) {
-  status_declare;
+/** display a sample array in one line */
+void debug_display_sample_array(sp_sample_t* a, sp_sample_count_t len) {
   sp_sample_count_t i;
-  sp_sample_count_t input_len;
-  sp_sample_count_t output_len;
-  sp_sample_t* output;
-  sp_sample_count_t scm_c_output_len;
-  SCM scm_output;
-  scm_dynwind_begin(0);
-  output = 0;
-  input_len = scm_to_sp_samples_length(scm_input);
-  output_len = sp_fftr_output_len(input_len);
-  scm_c_output_len = (output_len / 2);
-  scm_output = scm_c_make_vector(scm_c_output_len, SCM_BOOL_F);
-  status_require((sph_helper_malloc((output_len * sizeof(sp_sample_t)), (&output))));
-  scm_dynwind_free(output);
-  status_require((sp_fftr((scm_to_sp_samples(scm_input)), input_len, output)));
-  /* convert to scheme complex numbers */
-  for (i = 0; (i < scm_c_output_len); i = (1 + i)) {
-    scm_c_vector_set_x(scm_output, i, (scm_c_make_rectangular((output[(2 * i)]), (output[(1 + (2 * i))]))));
+  printf(("%.17g"), (a[0]));
+  for (i = 1; (i < len); i = (1 + i)) {
+    printf((" %.17g"), (a[i]));
   };
-exit:
-  scm_from_status_dynwind_end_return(scm_output);
+  printf("\n");
 };
-/** scm-sp-fftri takes scheme complex numbers, sp-fftri takes complex numbers as alternated real/imaginary values in an array */
-SCM scm_sp_fftri(SCM scm_input) {
+SCM scm_sp_fft(SCM scm_input) {
   status_declare;
-  sp_sample_count_t output_len;
-  SCM scm_output;
-  sp_sample_count_t scm_c_input_len;
-  sp_sample_count_t i;
-  sp_sample_t* input;
   sp_sample_count_t input_len;
+  sp_sample_t* input_or_output_real;
+  sp_sample_t* input_or_output_imag;
   scm_dynwind_begin(0);
-  scm_c_input_len = scm_c_vector_length(scm_input);
-  input_len = (2 * scm_c_input_len);
-  output_len = sp_fftri_output_len(input_len);
-  scm_output = scm_c_make_sp_samples(output_len);
-  /* convert from scheme complex numbers to alternated array */
-  status_require((sph_helper_malloc((input_len * sizeof(sp_sample_t)), (&input))));
-  scm_dynwind_free(input);
-  for (i = 0; (i < scm_c_input_len); i = (1 + i)) {
-    input[(2 * i)] = scm_to_sp_sample((scm_real_part((scm_c_vector_ref(scm_input, i)))));
-    input[(1 + (2 * i))] = scm_to_sp_sample((scm_imag_part((scm_c_vector_ref(scm_input, i)))));
+  input_len = scm_c_vector_length(scm_input);
+  status_require((sph_helper_malloc((input_len * sizeof(sp_sample_t)), (&input_or_output_real))));
+  status_require((sph_helper_malloc((input_len * sizeof(sp_sample_t)), (&input_or_output_imag))));
+  scm_dynwind_free(input_or_output_real);
+  scm_dynwind_free(input_or_output_imag);
+  for (i = 0; (i < input_len); i = (1 + i)) {
+    input_or_output_real[i] = scm_to_sp_sample((scm_real_part((scm_c_vector_ref(scm_input, i)))));
+    input_or_output_imag[i] = scm_to_sp_sample((scm_imag_part((scm_c_vector_ref(scm_input, i)))));
   };
-  status_require((sp_fftri(input, input_len, (scm_to_sp_samples(scm_output)))));
-exit:
-  scm_from_status_dynwind_end_return(scm_output);
+  status_require((sp_fft(input_len, input_or_output_real, input_or_output_imag)));
+  scm_output = scm_c_make_sp_samples(input_len);
+  for (i = 0; (i < input_len); i = (1 + i)) {
+    scm_c_vector_set_x(scm_output, i, (scm_c_make_rectangular((input_or_output_real[i]), (input_or_output_imag[i]))));
+  }
+  = exit : scm_from_status_dynwind_end_return(scm_output);
 };
-SCM scm_sp_alsa_open(SCM scm_device_name, SCM scm_mode, SCM scm_channel_count, SCM scm_sample_rate, SCM scm_latency) {
+SCM scm_sp_ffti(SCM scm_input) {
   status_declare;
-  uint8_t* device_name;
-  int32_t latency;
-  SCM scm_result;
-  sp_port_t* port;
+  sp_sample_count_t input_len;
+  sp_sample_t* input_or_output_real;
+  sp_sample_t* input_or_output_imag;
   scm_dynwind_begin(0);
-  device_name = scm_to_locale_string(scm_device_name);
-  latency = (scm_is_undefined(scm_latency) ? -1 : scm_to_sp_sample_count(scm_latency));
-  scm_dynwind_free(device_name);
-  port = scm_gc_malloc_pointerless((sizeof(sp_port_t)), "sp-port");
-  status_require((sp_alsa_open(device_name, (scm_to_uint8(scm_mode)), (scm_to_sp_channel_count(scm_channel_count)), (scm_to_sp_sample_rate(scm_sample_rate)), latency, port)));
-  scm_result = scm_from_sp_port(port);
-exit:
-  scm_from_status_dynwind_end_return(scm_result);
+  input_len = scm_c_vector_length(scm_input);
+  status_require((sph_helper_malloc((input_len * sizeof(sp_sample_t)), (&input_or_output_real))));
+  status_require((sph_helper_malloc((input_len * sizeof(sp_sample_t)), (&input_or_output_imag))));
+  scm_dynwind_free(input_or_output_real);
+  scm_dynwind_free(input_or_output_imag);
+  for (i = 0; (i < input_len); i = (1 + i)) {
+    input_or_output_real[i] = scm_to_sp_sample((scm_real_part((scm_c_vector_ref(scm_input, i)))));
+    input_or_output_imag[i] = scm_to_sp_sample((scm_imag_part((scm_c_vector_ref(scm_input, i)))));
+  };
+  status_require((sp_ffti(input_len, input_or_output_real, input_or_output_imag)));
+  scm_output = scm_c_make_sp_samples(input_len);
+  for (i = 0; (i < input_len); i = (1 + i)) {
+    scm_c_vector_set_x(scm_output, i, (scm_c_make_rectangular((input_or_output_real[i]), (input_or_output_imag[i]))));
+  }
+  = exit : scm_from_status_dynwind_end_return(scm_output);
 };
 SCM scm_sp_file_open(SCM scm_path, SCM mode, SCM scm_channel_count, SCM scm_sample_rate) {
   status_declare;
   uint8_t* path;
   SCM scm_result;
-  sp_port_t* port;
+  sp_file_t* file;
   scm_dynwind_begin(0);
   path = scm_to_locale_string(scm_path);
   scm_dynwind_free(path);
-  port = scm_gc_malloc_pointerless((sizeof(sp_port_t)), "sp-port");
-  status_require((sp_file_open(path, (scm_to_uint8(mode)), (scm_is_undefined(scm_channel_count) ? 0 : scm_to_sp_channel_count(scm_channel_count)), (scm_is_undefined(scm_sample_rate) ? 0 : scm_to_sp_sample_rate(scm_sample_rate)), port)));
-  scm_result = scm_from_sp_port(port);
+  file = scm_gc_malloc_pointerless((sizeof(sp_file_t)), "sp-file");
+  status_require((sp_file_open(path, (scm_to_uint8(mode)), (scm_is_undefined(scm_channel_count) ? 0 : scm_to_sp_channel_count(scm_channel_count)), (scm_is_undefined(scm_sample_rate) ? 0 : scm_to_sp_sample_rate(scm_sample_rate)), file)));
+  scm_result = scm_from_sp_file(file);
 exit:
   scm_from_status_dynwind_end_return(scm_result);
 };
 SCM scm_f64vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f64_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((f64*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? (SCM_BYTEVECTOR_LENGTH(a) / sizeof(f64)) : (end - (1 + start))) * sizeof(f64))))))); };
 SCM scm_f32vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f32_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((f32*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? (SCM_BYTEVECTOR_LENGTH(a) / sizeof(f32)) : (end - (1 + start))) * sizeof(f32))))))); };
 SCM scm_f64_nearly_equal_p(SCM a, SCM b, SCM margin) { return ((scm_from_bool((f64_nearly_equal((scm_to_double(a)), (scm_to_double(b)), (scm_to_double(margin))))))); };
-SCM scm_sp_port_read(SCM scm_port, SCM scm_sample_count) {
+SCM scm_sp_file_read(SCM scm_file, SCM scm_sample_count) {
   status_declare;
   sp_channel_count_t channel_count;
   sp_sample_t** channel_data;
-  sp_port_t* port;
+  sp_file_t* file;
   sp_sample_count_t result_sample_count;
   sp_sample_count_t sample_count;
   SCM scm_result;
   channel_data = 0;
-  port = scm_to_sp_port(scm_port);
+  file = scm_to_sp_file(scm_file);
   sample_count = scm_to_sp_sample_count(scm_sample_count);
-  channel_count = port->channel_count;
+  channel_count = file->channel_count;
   status_require((sp_alloc_channel_array(channel_count, sample_count, (&channel_data))));
-  status_require((sp_port_read(port, sample_count, channel_data, (&result_sample_count))));
+  status_require((sp_file_read(file, sample_count, channel_data, (&result_sample_count))));
   scm_result = scm_c_take_channel_data(channel_data, channel_count, sample_count);
 exit:
   if (status_is_failure) {
@@ -253,7 +241,7 @@ exit:
   };
   scm_from_status_return(scm_result);
 };
-SCM scm_sp_port_write(SCM scm_port, SCM scm_channel_data, SCM scm_sample_count) {
+SCM scm_sp_file_write(SCM scm_file, SCM scm_channel_data, SCM scm_sample_count) {
   status_declare;
   sp_sample_t** channel_data;
   sp_channel_count_t channel_count;
@@ -263,7 +251,7 @@ SCM scm_sp_port_write(SCM scm_port, SCM scm_channel_data, SCM scm_sample_count) 
   channel_data = 0;
   sample_count = scm_to_sp_sample_count(scm_sample_count);
   status_require((scm_to_channel_data(scm_channel_data, (&channel_count), (&channel_data))));
-  status_require((sp_port_write((scm_to_sp_port(scm_port)), channel_data, sample_count, (&result_sample_count))));
+  status_require((sp_file_write((scm_to_sp_file(scm_file)), channel_data, sample_count, (&result_sample_count))));
   scm_result = scm_from_sp_sample_count(result_sample_count);
   scm_remember_upto_here_1(scm_channel_data);
 exit:
@@ -295,12 +283,12 @@ void sp_guile_init() {
   scm_rnrs_raise = scm_c_public_ref("rnrs exceptions", "raise");
   scm_symbol_data = scm_from_latin1_symbol("data");
   type_slots = scm_list_1(scm_symbol_data);
-  scm_type_port = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-port")), type_slots, 0);
+  scm_type_file = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-file")), type_slots, 0);
   scm_type_convolution_filter_state = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-convolution-filter-state")), type_slots, scm_sp_convolution_filter_state_finalize);
   scm_c_module_define(m, "sp-sample-format", (scm_sp_sample_format(sp_sample_format)));
-  scm_c_module_define(m, "sp-port-mode-read", (scm_from_uint8(sp_port_mode_read)));
-  scm_c_module_define(m, "sp-port-mode-write", (scm_from_uint8(sp_port_mode_write)));
-  scm_c_module_define(m, "sp-port-mode-read-write", (scm_from_uint8(sp_port_mode_read_write)));
+  scm_c_module_define(m, "sp-file-mode-read", (scm_from_uint8(sp_file_mode_read)));
+  scm_c_module_define(m, "sp-file-mode-write", (scm_from_uint8(sp_file_mode_write)));
+  scm_c_module_define(m, "sp-file-mode-read-write", (scm_from_uint8(sp_file_mode_read_write)));
   scm_c_define_procedure_c_init;
   scm_c_define_procedure_c("sp-convolve!", 4, 1, 0, scm_sp_convolve_x, ("out a b carryover [carryover-len] -> unspecified"));
   scm_c_define_procedure_c("sp-window-blackman", 2, 0, 0, scm_sp_window_blackman, ("real width -> real"));
@@ -310,20 +298,19 @@ void sp_guile_init() {
   scm_c_define_procedure_c("sp-windowed-sinc-bp-br-ir", 5, 0, 0, scm_sp_windowed_sinc_bp_br_ir, ("real real real real boolean -> samples\n    cutoff-l cutoff-h transition-l transition-h is-reject -> ir\n    get an impulse response kernel for a band-pass or band-reject filter"));
   scm_c_define_procedure_c("sp-convolution-filter!", 5, 0, 0, scm_sp_convolution_filter_x, ("out in ir-f ir-f-arguments state -> state\n     samples samples procedure list sp-convolution-filter-state -> sp-convolution-filter-state"));
   scm_c_define_procedure_c("sp-moving-average!", 5, 2, 0, scm_sp_moving_average_x, ("result source previous next radius [start end] -> unspecified\n    sample-vector sample-vector sample-vector sample-vector integer integer integer [integer]"));
-  scm_c_define_procedure_c("sp-fftr", 1, 0, 0, scm_sp_fftr, ("sample-vector:values-at-times -> #(complex ...):frequencies\n    discrete fourier transform on the input data. only the real part"));
-  scm_c_define_procedure_c("sp-fftri", 1, 0, 0, scm_sp_fftri, ("#(complex ...):frequencies -> sample-vector:values-at-times\n    inverse discrete fourier transform on the input data. only the real part"));
-  scm_c_define_procedure_c("sp-alsa-open", 4, 1, 0, scm_sp_alsa_open, ("device-name mode channel-count sample-rate [latency] -> sp-port"));
-  scm_c_define_procedure_c("sp-file-open", 2, 2, 0, scm_sp_file_open, ("path mode [channel-count sample-rate] -> sp-port"));
-  scm_c_define_procedure_c("sp-port-close", 1, 0, 0, scm_sp_port_close, ("sp-port -> boolean"));
-  scm_c_define_procedure_c("sp-port-input?", 1, 0, 0, scm_sp_port_input_p, ("sp-port -> boolean"));
-  scm_c_define_procedure_c("sp-port-position?", 1, 0, 0, scm_sp_port_position_p, ("sp-port -> boolean"));
-  scm_c_define_procedure_c("sp-port-position", 1, 0, 0, scm_sp_port_position, ("sp-port -> integer"));
-  scm_c_define_procedure_c("sp-port-channel-count", 1, 0, 0, scm_sp_port_channel_count, ("sp-port -> integer"));
-  scm_c_define_procedure_c("sp-port-sample-rate", 1, 0, 0, scm_sp_port_sample_rate, ("sp-port -> integer"));
+  scm_c_define_procedure_c("sp-fft", 1, 0, 0, scm_sp_fft, ("#(complex ...) -> #(complex ...)"));
+  scm_c_define_procedure_c("sp-ffti", 1, 0, 0, scm_sp_ffti, ("#(complex ...) -> #(complex ...)\n    inverse discrete fourier transform"));
+  scm_c_define_procedure_c("sp-file-open", 2, 2, 0, scm_sp_file_open, ("path mode [channel-count sample-rate] -> sp-file"));
+  scm_c_define_procedure_c("sp-file-close", 1, 0, 0, scm_sp_file_close, ("sp-file -> boolean"));
+  scm_c_define_procedure_c("sp-file-input?", 1, 0, 0, scm_sp_file_input_p, ("sp-file -> boolean"));
+  scm_c_define_procedure_c("sp-file-position?", 1, 0, 0, scm_sp_file_position_p, ("sp-file -> boolean"));
+  scm_c_define_procedure_c("sp-file-position", 1, 0, 0, scm_sp_file_position, ("sp-file -> integer"));
+  scm_c_define_procedure_c("sp-file-channel-count", 1, 0, 0, scm_sp_file_channel_count, ("sp-file -> integer"));
+  scm_c_define_procedure_c("sp-file-sample-rate", 1, 0, 0, scm_sp_file_sample_rate, ("sp-file -> integer"));
   scm_c_define_procedure_c("f32vector-sum", 1, 2, 0, scm_f32vector_sum, ("f32vector [start end] -> number"));
   scm_c_define_procedure_c("f64vector-sum", 1, 2, 0, scm_f64vector_sum, ("f64vector [start end] -> number"));
   scm_c_define_procedure_c("f64-nearly-equal?", 3, 0, 0, scm_f64_nearly_equal_p, ("a b margin -> boolean\n    number number number -> boolean"));
-  scm_c_define_procedure_c("sp-port-read", 2, 0, 0, scm_sp_port_read, ("sp-port integer:sample-count -> (sample-vector ...):channel-data"));
-  scm_c_define_procedure_c("sp-port-write", 3, 0, 0, scm_sp_port_write, ("sp-port (sample-vector ...):channel-data [integer:sample-count] -> unspecified\n  write sample data to the channels of port"));
-  scm_c_define_procedure_c("sp-port-position-set", 2, 0, 0, scm_sp_port_position_set, ("sp-port integer:sample-offset -> boolean\n    sample-offset can be negative, in which case it is from the end of the port"));
+  scm_c_define_procedure_c("sp-file-read", 2, 0, 0, scm_sp_file_read, ("sp-file integer:sample-count -> (sample-vector ...):channel-data"));
+  scm_c_define_procedure_c("sp-file-write", 3, 0, 0, scm_sp_file_write, ("sp-file (sample-vector ...):channel-data [integer:sample-count] -> unspecified\n  write sample data to the channels of file"));
+  scm_c_define_procedure_c("sp-file-position-set", 2, 0, 0, scm_sp_file_position_set, ("sp-file integer:sample-offset -> boolean\n    sample-offset can be negative, in which case it is from the end of the file"));
 };

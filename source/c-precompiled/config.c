@@ -24,11 +24,11 @@
 #define scm_c_make_sp_samples(len) scm_make_s8vector((scm_from_sp_sample_count(len)), (scm_from_uint8(0)))
 #define scm_c_take_samples(a, len) scm_take_s8vector(a, len)
 #endif
-#define scm_from_sp_channel_count(a) scm_from_uint32(a)
+#define scm_from_sp_channel_count(a) scm_from_uint8(a)
 #define scm_from_sp_sample_rate(a) scm_from_uint32(a)
 #define scm_from_sp_sample_count(a) scm_from_size_t(a)
 #define scm_from_sp_float(a) scm_from_double(a)
-#define scm_to_sp_channel_count(a) scm_to_uint32(a)
+#define scm_to_sp_channel_count(a) scm_to_uint8(a)
 #define scm_to_sp_sample_rate(a) scm_to_uint32(a)
 #define scm_to_sp_sample_count(a) scm_to_size_t(a)
 #define scm_to_sp_float(a) scm_to_double(a)
