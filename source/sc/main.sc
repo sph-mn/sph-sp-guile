@@ -231,9 +231,11 @@
 (define (scm-sp-fft scm-input) (SCM SCM)
   status-declare
   (declare
+    i sp-sample-count-t
     input-len sp-sample-count-t
     input/output-real sp-sample-t*
-    input/output-imag sp-sample-t*)
+    input/output-imag sp-sample-t*
+    scm-output SCM)
   (scm-dynwind-begin 0)
   (set input-len (scm-c-vector-length scm-input))
   (status-require (sph-helper-malloc (* input-len (sizeof sp-sample-t)) &input/output-real))
@@ -245,21 +247,22 @@
       (array-get input/output-real i) (scm->sp-sample (scm-real-part (scm-c-vector-ref scm-input i)))
       (array-get input/output-imag i) (scm->sp-sample (scm-imag-part (scm-c-vector-ref scm-input i)))))
   (status-require (sp-fft input-len input/output-real input/output-imag))
-  (set
-    scm-output (scm-c-make-sp-samples input-len)
-    (for ((set i 0) (< i input-len) (set i (+ 1 i)))
-      (scm-c-vector-set!
-        scm-output
-        i (scm-c-make-rectangular (array-get input/output-real i) (array-get input/output-imag i))))
-    (label exit
-      (scm-from-status-dynwind-end-return scm-output))))
+  (set scm-output (scm-c-make-vector input-len SCM-BOOL-F))
+  (for ((set i 0) (< i input-len) (set i (+ 1 i)))
+    (scm-c-vector-set!
+      scm-output
+      i (scm-c-make-rectangular (array-get input/output-real i) (array-get input/output-imag i))))
+  (label exit
+    (scm-from-status-dynwind-end-return scm-output)))
 
 (define (scm-sp-ffti scm-input) (SCM SCM)
   status-declare
   (declare
+    i sp-sample-count-t
     input-len sp-sample-count-t
     input/output-real sp-sample-t*
-    input/output-imag sp-sample-t*)
+    input/output-imag sp-sample-t*
+    scm-output SCM)
   (scm-dynwind-begin 0)
   (set input-len (scm-c-vector-length scm-input))
   (status-require (sph-helper-malloc (* input-len (sizeof sp-sample-t)) &input/output-real))
@@ -271,14 +274,13 @@
       (array-get input/output-real i) (scm->sp-sample (scm-real-part (scm-c-vector-ref scm-input i)))
       (array-get input/output-imag i) (scm->sp-sample (scm-imag-part (scm-c-vector-ref scm-input i)))))
   (status-require (sp-ffti input-len input/output-real input/output-imag))
-  (set
-    scm-output (scm-c-make-sp-samples input-len)
-    (for ((set i 0) (< i input-len) (set i (+ 1 i)))
-      (scm-c-vector-set!
-        scm-output
-        i (scm-c-make-rectangular (array-get input/output-real i) (array-get input/output-imag i))))
-    (label exit
-      (scm-from-status-dynwind-end-return scm-output))))
+  (set scm-output (scm-c-make-vector input-len SCM-BOOL-F))
+  (for ((set i 0) (< i input-len) (set i (+ 1 i)))
+    (scm-c-vector-set!
+      scm-output
+      i (scm-c-make-rectangular (array-get input/output-real i) (array-get input/output-imag i))))
+  (label exit
+    (scm-from-status-dynwind-end-return scm-output)))
 
 (define (scm-sp-file-open scm-path mode scm-channel-count scm-sample-rate) (SCM SCM SCM SCM SCM)
   status-declare
@@ -310,11 +312,11 @@
         (+
           (if* (scm-is-undefined start) 0
             (scm->size-t start))
-          (convert-type (SCM-BYTEVECTOR-CONTENTS a) f64*))
+          (convert-type (SCM-BYTEVECTOR-CONTENTS a) double*))
         (*
-          (if* (scm-is-undefined end) (/ (SCM-BYTEVECTOR-LENGTH a) (sizeof f64))
+          (if* (scm-is-undefined end) (/ (SCM-BYTEVECTOR-LENGTH a) (sizeof double))
             (- end (+ 1 start)))
-          (sizeof f64))))))
+          (sizeof double))))))
 
 (define (scm-f32vector-sum a start end) (SCM SCM SCM SCM)
   (return
@@ -323,11 +325,11 @@
         (+
           (if* (scm-is-undefined start) 0
             (scm->size-t start))
-          (convert-type (SCM-BYTEVECTOR-CONTENTS a) f32*))
+          (convert-type (SCM-BYTEVECTOR-CONTENTS a) float*))
         (*
-          (if* (scm-is-undefined end) (/ (SCM-BYTEVECTOR-LENGTH a) (sizeof f32))
+          (if* (scm-is-undefined end) (/ (SCM-BYTEVECTOR-LENGTH a) (sizeof float))
             (- end (+ 1 start)))
-          (sizeof f32))))))
+          (sizeof float))))))
 
 (define (scm-f64-nearly-equal? a b margin) (SCM SCM SCM SCM)
   (return (scm-from-bool (f64-nearly-equal (scm->double a) (scm->double b) (scm->double margin)))))
@@ -382,14 +384,6 @@
 (define (scm-sp-window-blackman a width) (SCM SCM SCM)
   (scm-from-sp-float (sp-window-blackman (scm->sp-float a) (scm->sp-sample-count width))))
 
-(define (scm-sp-sample-format) SCM
-  (case = sp-sample-format
-    (sp-sample-format-f64 (return (scm-from-latin1-symbol "f64")))
-    (sp-sample-format-f32 (return (scm-from-latin1-symbol "f32")))
-    (sp-sample-format-int32 (return (scm-from-latin1-symbol "int32")))
-    (sp-sample-format-int16 (return (scm-from-latin1-symbol "int16")))
-    (sp-sample-format-int8 (return (scm-from-latin1-symbol "int8")))))
-
 (define (scm-sp-convolution-filter-state-finalize a) (void SCM)
   (sp-convolution-filter-state-free (scm->sp-convolution-filter-state a)))
 
@@ -408,7 +402,6 @@
     (scm-make-foreign-object-type
       (scm-from-latin1-symbol "sp-convolution-filter-state")
       type-slots scm-sp-convolution-filter-state-finalize))
-  (scm-c-module-define m "sp-sample-format" (scm-sp-sample-format sp-sample-format))
   (scm-c-module-define m "sp-file-mode-read" (scm-from-uint8 sp-file-mode-read))
   (scm-c-module-define m "sp-file-mode-write" (scm-from-uint8 sp-file-mode-write))
   (scm-c-module-define m "sp-file-mode-read-write" (scm-from-uint8 sp-file-mode-read-write))

@@ -1,4 +1,3 @@
-/* depends on sph/types.c */
 #include <float.h>
 #include <math.h>
 #define define_float_sum(prefix, type) \
@@ -31,27 +30,11 @@
     }; \
     return (1); \
   }
-/** approximate float comparison. margin is a factor and is low for low accepted differences.
-   http://floating-point-gui.de/errors/comparison/ */
-uint8_t f64_nearly_equal(f64 a, f64 b, f64 margin) {
-  if (a == b) {
-    return (1);
-  } else {
-    f64 diff = fabs((a - b));
-    return ((((0 == a) || (0 == b) || (diff < DBL_MIN)) ? (diff < (margin * DBL_MIN)) : ((diff / fmin((fabs(a) + fabs(b)), DBL_MAX)) < margin)));
-  };
-};
-/** approximate float comparison. margin is a factor and is low for low accepted differences.
-   http://floating-point-gui.de/errors/comparison/ */
-uint8_t f32_nearly_equal(f32 a, f32 b, f32 margin) {
-  if (a == b) {
-    return (1);
-  } else {
-    f32 diff = fabs((a - b));
-    return ((((0 == a) || (0 == b) || (diff < FLT_MIN)) ? (diff < (margin * FLT_MIN)) : ((diff / fmin((fabs(a) + fabs(b)), FLT_MAX)) < margin)));
-  };
-};
-define_float_array_nearly_equal(f32, f32);
-define_float_array_nearly_equal(f64, f64);
-define_float_sum(f32, f32);
-define_float_sum(f64, f64);
+/** approximate float comparison. margin is a factor and is low for low accepted differences */
+uint8_t f64_nearly_equal(double a, double b, double margin) { return ((fabs((a - b)) < margin)); };
+/** approximate float comparison. margin is a factor and is low for low accepted differences */
+uint8_t f32_nearly_equal(float a, float b, float margin) { return ((fabs((a - b)) < margin)); };
+define_float_array_nearly_equal(f32, float);
+define_float_array_nearly_equal(f64, double);
+define_float_sum(f32, float);
+define_float_sum(f64, double);

@@ -155,9 +155,11 @@ void debug_display_sample_array(sp_sample_t* a, sp_sample_count_t len) {
 };
 SCM scm_sp_fft(SCM scm_input) {
   status_declare;
+  sp_sample_count_t i;
   sp_sample_count_t input_len;
   sp_sample_t* input_or_output_real;
   sp_sample_t* input_or_output_imag;
+  SCM scm_output;
   scm_dynwind_begin(0);
   input_len = scm_c_vector_length(scm_input);
   status_require((sph_helper_malloc((input_len * sizeof(sp_sample_t)), (&input_or_output_real))));
@@ -169,17 +171,20 @@ SCM scm_sp_fft(SCM scm_input) {
     input_or_output_imag[i] = scm_to_sp_sample((scm_imag_part((scm_c_vector_ref(scm_input, i)))));
   };
   status_require((sp_fft(input_len, input_or_output_real, input_or_output_imag)));
-  scm_output = scm_c_make_sp_samples(input_len);
+  scm_output = scm_c_make_vector(input_len, SCM_BOOL_F);
   for (i = 0; (i < input_len); i = (1 + i)) {
     scm_c_vector_set_x(scm_output, i, (scm_c_make_rectangular((input_or_output_real[i]), (input_or_output_imag[i]))));
-  }
-  = exit : scm_from_status_dynwind_end_return(scm_output);
+  };
+exit:
+  scm_from_status_dynwind_end_return(scm_output);
 };
 SCM scm_sp_ffti(SCM scm_input) {
   status_declare;
+  sp_sample_count_t i;
   sp_sample_count_t input_len;
   sp_sample_t* input_or_output_real;
   sp_sample_t* input_or_output_imag;
+  SCM scm_output;
   scm_dynwind_begin(0);
   input_len = scm_c_vector_length(scm_input);
   status_require((sph_helper_malloc((input_len * sizeof(sp_sample_t)), (&input_or_output_real))));
@@ -191,11 +196,12 @@ SCM scm_sp_ffti(SCM scm_input) {
     input_or_output_imag[i] = scm_to_sp_sample((scm_imag_part((scm_c_vector_ref(scm_input, i)))));
   };
   status_require((sp_ffti(input_len, input_or_output_real, input_or_output_imag)));
-  scm_output = scm_c_make_sp_samples(input_len);
+  scm_output = scm_c_make_vector(input_len, SCM_BOOL_F);
   for (i = 0; (i < input_len); i = (1 + i)) {
     scm_c_vector_set_x(scm_output, i, (scm_c_make_rectangular((input_or_output_real[i]), (input_or_output_imag[i]))));
-  }
-  = exit : scm_from_status_dynwind_end_return(scm_output);
+  };
+exit:
+  scm_from_status_dynwind_end_return(scm_output);
 };
 SCM scm_sp_file_open(SCM scm_path, SCM mode, SCM scm_channel_count, SCM scm_sample_rate) {
   status_declare;
@@ -211,8 +217,8 @@ SCM scm_sp_file_open(SCM scm_path, SCM mode, SCM scm_channel_count, SCM scm_samp
 exit:
   scm_from_status_dynwind_end_return(scm_result);
 };
-SCM scm_f64vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f64_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((f64*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? (SCM_BYTEVECTOR_LENGTH(a) / sizeof(f64)) : (end - (1 + start))) * sizeof(f64))))))); };
-SCM scm_f32vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f32_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((f32*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? (SCM_BYTEVECTOR_LENGTH(a) / sizeof(f32)) : (end - (1 + start))) * sizeof(f32))))))); };
+SCM scm_f64vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f64_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((double*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? (SCM_BYTEVECTOR_LENGTH(a) / sizeof(double)) : (end - (1 + start))) * sizeof(double))))))); };
+SCM scm_f32vector_sum(SCM a, SCM start, SCM end) { return ((scm_from_double((f32_sum(((scm_is_undefined(start) ? 0 : scm_to_size_t(start)) + ((float*)(SCM_BYTEVECTOR_CONTENTS(a)))), ((scm_is_undefined(end) ? (SCM_BYTEVECTOR_LENGTH(a) / sizeof(float)) : (end - (1 + start))) * sizeof(float))))))); };
 SCM scm_f64_nearly_equal_p(SCM a, SCM b, SCM margin) { return ((scm_from_bool((f64_nearly_equal((scm_to_double(a)), (scm_to_double(b)), (scm_to_double(margin))))))); };
 SCM scm_sp_file_read(SCM scm_file, SCM scm_sample_count) {
   status_declare;
@@ -261,19 +267,6 @@ exit:
   scm_from_status_return(scm_result);
 };
 SCM scm_sp_window_blackman(SCM a, SCM width) { scm_from_sp_float((sp_window_blackman((scm_to_sp_float(a)), (scm_to_sp_sample_count(width))))); };
-SCM scm_sp_sample_format() {
-  if (sp_sample_format_f64 == sp_sample_format) {
-    return ((scm_from_latin1_symbol("f64")));
-  } else if (sp_sample_format_f32 == sp_sample_format) {
-    return ((scm_from_latin1_symbol("f32")));
-  } else if (sp_sample_format_int32 == sp_sample_format) {
-    return ((scm_from_latin1_symbol("int32")));
-  } else if (sp_sample_format_int16 == sp_sample_format) {
-    return ((scm_from_latin1_symbol("int16")));
-  } else if (sp_sample_format_int8 == sp_sample_format) {
-    return ((scm_from_latin1_symbol("int8")));
-  };
-};
 void scm_sp_convolution_filter_state_finalize(SCM a) { sp_convolution_filter_state_free((scm_to_sp_convolution_filter_state(a))); };
 void sp_guile_init() {
   SCM type_slots;
@@ -285,7 +278,6 @@ void sp_guile_init() {
   type_slots = scm_list_1(scm_symbol_data);
   scm_type_file = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-file")), type_slots, 0);
   scm_type_convolution_filter_state = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-convolution-filter-state")), type_slots, scm_sp_convolution_filter_state_finalize);
-  scm_c_module_define(m, "sp-sample-format", (scm_sp_sample_format(sp_sample_format)));
   scm_c_module_define(m, "sp-file-mode-read", (scm_from_uint8(sp_file_mode_read)));
   scm_c_module_define(m, "sp-file-mode-write", (scm_from_uint8(sp_file_mode_write)));
   scm_c_module_define(m, "sp-file-mode-read-write", (scm_from_uint8(sp_file_mode_read_write)));

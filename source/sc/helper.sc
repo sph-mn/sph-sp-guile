@@ -2,10 +2,10 @@
 
 (pre-define
   status-group-sp-guile "sp-guile"
-  (scm-from-sp-port pointer) (scm-make-foreign-object-1 scm-type-port pointer)
+  (scm-from-sp-file pointer) (scm-make-foreign-object-1 scm-type-file pointer)
   (scm-from-sp-convolution-filter-state pointer)
-  (scm-make-foreign-object-1 scm-type-convolution-filter-state pointer) (scm->sp-port a)
-  (convert-type (scm-foreign-object-ref a 0) sp-port-t*) (scm->sp-convolution-filter-state a)
+  (scm-make-foreign-object-1 scm-type-convolution-filter-state pointer) (scm->sp-file a)
+  (convert-type (scm-foreign-object-ref a 0) sp-file-t*) (scm->sp-convolution-filter-state a)
   (convert-type (scm-foreign-object-ref a 0) sp-convolution-filter-state-t*) (scm->sp-samples a)
   (convert-type (SCM-BYTEVECTOR-CONTENTS a) sp-sample-t*) (scm->sp-samples-length a)
   (sp-octets->samples (SCM-BYTEVECTOR-LENGTH a)) scm-samples?
@@ -67,7 +67,7 @@
   (return (convert-type b uint8-t*)))
 
 (declare
-  scm-type-port SCM
+  scm-type-file SCM
   scm-type-convolution-filter-state SCM
   scm-rnrs-raise SCM)
 

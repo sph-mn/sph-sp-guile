@@ -4,9 +4,9 @@
 #include "./foreign/sph/guile.c"
 #include "./config.c"
 #define status_group_sp_guile "sp-guile"
-#define scm_from_sp_port(pointer) scm_make_foreign_object_1(scm_type_port, pointer)
+#define scm_from_sp_file(pointer) scm_make_foreign_object_1(scm_type_file, pointer)
 #define scm_from_sp_convolution_filter_state(pointer) scm_make_foreign_object_1(scm_type_convolution_filter_state, pointer)
-#define scm_to_sp_port(a) ((sp_port_t*)(scm_foreign_object_ref(a, 0)))
+#define scm_to_sp_file(a) ((sp_file_t*)(scm_foreign_object_ref(a, 0)))
 #define scm_to_sp_convolution_filter_state(a) ((sp_convolution_filter_state_t*)(scm_foreign_object_ref(a, 0)))
 #define scm_to_sp_samples(a) ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(a)))
 #define scm_to_sp_samples_length(a) sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(a)))
@@ -56,7 +56,7 @@ uint8_t* sp_guile_status_name(status_t a) {
   };
   return (((uint8_t*)(b)));
 };
-SCM scm_type_port;
+SCM scm_type_file;
 SCM scm_type_convolution_filter_state;
 SCM scm_rnrs_raise;
 /** scm channel data: #(#(sample ...):channel ...)

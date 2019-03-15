@@ -29,7 +29,9 @@
     sp-convolve!
     sp-duration->sample-count
     sp-factor->rads
+    sp-fft
     sp-fft-resynth
+    sp-ffti
     sp-fftr
     sp-fftri
     sp-file-open
@@ -84,7 +86,6 @@
     sp-sample-align
     sp-sample-align-list
     sp-sample-count->duration
-    sp-sample-format
     sp-sample-sum
     sp-samples->list
     sp-samples-apply-blackman-window
@@ -177,76 +178,20 @@
         (if (> index 1)
           (begin (sp-samples-set! b index (* -1 (sp-samples-ref b index))) (loop (- index 2))) b))))
 
-  (define sp-samples-map
-    (case sp-sample-format
-      ((f64) f64vector-map)
-      ((f32) f32vector-map)))
-
-  (define sp-samples-map-with
-    (case sp-sample-format
-      ((f64) f64vector-map-with)
-      ((f32) f32vector-map-with)))
-
-  (define sp-samples-map-with-index
-    (case sp-sample-format
-      ((f64) f64vector-map-with-index)
-      ((f32) f32vector-map-with-index)))
-
-  (define sp-samples-map!
-    (case sp-sample-format
-      ((f64) f64vector-map!)
-      ((f32) f32vector-map!)))
-
-  (define sp-samples-new
-    (case sp-sample-format
-      ((f64) (sp-samples-new-f f64vector-create make-f64vector))
-      ((f32) (sp-samples-new-f f32vector-create make-f32vector))))
-
-  (define sp-samples-set!
-    (case sp-sample-format
-      ((f64) f64vector-set!)
-      ((f32) f32vector-set!)))
-
-  (define sp-samples-ref
-    (case sp-sample-format
-      ((f64) f64vector-ref)
-      ((f32) f32vector-ref)))
-
-  (define sp-samples?
-    (case sp-sample-format
-      ((f64) f64vector?)
-      ((f32) f32vector?)))
-
-  (define sp-samples->list
-    (case sp-sample-format
-      ((f64) f64vector->list)
-      ((f32) f32vector->list)))
-
-  (define sp-samples-from-list
-    (case sp-sample-format
-      ((f64) list->f64vector)
-      ((f32) list->f32vector)))
-
-  (define sp-samples-copy-zero
-    (case sp-sample-format
-      ((f64) f64vector-copy-zero)
-      ((f32) f32vector-copy-zero)))
-
-  (define sp-samples-copy-zero*
-    (case sp-sample-format
-      ((f64) f64vector-copy-zero*)
-      ((f32) f32vector-copy-zero*)))
-
-  (define sp-samples-length
-    (case sp-sample-format
-      ((f64) f64vector-length)
-      ((f32) f32vector-length)))
-
-  (define sp-samples-copy
-    (case sp-sample-format
-      ((f64) f64vector-copy)
-      ((f32) f32vector-copy)))
-
+  (define sp-samples-map f64vector-map)
+  (define sp-samples-map-with f64vector-map-with)
+  (define sp-samples-map-with-index f64vector-map-with-index)
+  (define sp-samples-map! f64vector-map!)
+  (define sp-samples-new (sp-samples-new-f f64vector-create make-f64vector))
+  (define sp-samples-set! f64vector-set!)
+  (define sp-samples-ref f64vector-ref)
+  (define sp-samples? f64vector?)
+  (define sp-samples->list f64vector->list)
+  (define sp-samples-from-list list->f64vector)
+  (define sp-samples-copy-zero f64vector-copy-zero)
+  (define sp-samples-copy-zero* f64vector-copy-zero*)
+  (define sp-samples-length f64vector-length)
+  (define sp-samples-copy f64vector-copy)
   (define (sp-duration->sample-count seconds sample-rate) (* seconds sample-rate))
   (define (sp-sample-count->duration sample-count sample-rate) (/ sample-count sample-rate))
 
@@ -354,6 +299,15 @@
 
   (define (sp-plot-spectrum a)
     (let (path (tmpnam)) (sp-plot-spectrum->file a path) (sp-plot-fft-display-file path)))
+
+  (define (sp-fftr a) "samples -> #(complex ...)"
+    (let*
+      ( (b (sp-fft (list->vector (map (l (a) (make-rectangular a 0)) (sp-samples->list a)))))
+        (c-len (+ 1 (/ (vector-length b) 2))) (c (make-vector c-len 0)))
+      (let loop ((i 0)) (if (< i c-len) (begin (vector-set! c i (vector-ref b i)) (loop (+ 1 i))))) c))
+
+  (define (sp-fftri a) "#(complex ...) -> samples"
+    (sp-samples-from-list (map real-part (vector->list (sp-ffti a)))))
 
   (define (sp-spectrum a) "samples -> #(real ...)"
     (vector-map (l (b) (* 2 (/ (magnitude b) (sp-samples-length a)))) (sp-fftr a)))
@@ -583,7 +537,8 @@
   (define (sp-samples-multiply a factor) (sp-samples-map (l (b) (* b factor)) a))
 
   (define (sp-fft-resynth f a)
-    "map the frequency domain of time domain samples.
+    "samples procedure:{#(complex ...) -> #(complex ...)} -> samples
+     map the frequency domain of time domain samples.
      call f with the result of a fft on samples and pass the result to fftri
      and scale output to match input.
      example
