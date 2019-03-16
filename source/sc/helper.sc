@@ -73,15 +73,14 @@
 
 (define (scm->channel-data a result-channel-count result-channel-data)
   (status-t SCM sp-channel-count-t* sp-sample-t***)
-  "scm channel data: #(#(sample ...):channel ...)
-  only the result array is allocated, data is referenced from the scm vectors.
+  "(samples ...):channels ...:block integer output -> status-t
   result is set to null if channel-data is empty"
   status-declare
   (declare
     channel-data sp-sample-t**
     channel-count sp-channel-count-t
     i sp-channel-count-t)
-  (set channel-count (scm-c-vector-length a))
+  (set channel-count (scm->size-t (scm-length a)))
   (if (not channel-count)
     (begin
       (set
@@ -90,7 +89,9 @@
       (goto exit)))
   (status-require (sph-helper-calloc (* channel-count (sizeof sp-sample-t*)) &channel-data))
   (for ((set i 0) (< i channel-count) (set i (+ 1 i)))
-    (set (array-get channel-data i) (scm->sp-samples (scm-c-vector-ref a i))))
+    (set
+      (array-get channel-data i) (scm->sp-samples (scm-first a))
+      a (scm-tail a)))
   (set
     *result-channel-data channel-data
     *result-channel-count channel-count)

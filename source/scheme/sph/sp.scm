@@ -9,6 +9,8 @@
     seq-assoc-bind
     seq-assoc-new
     seq-assocq
+    seq-event-end
+    seq-event-end-set!
     seq-event-f
     seq-event-f-set!
     seq-event-new
@@ -16,11 +18,11 @@
     seq-event-start-set!
     seq-event-state
     seq-event-state-set!
-    seq-series
     sp-asymmetric-moving
     sp-asymmetric-moving-average
     sp-asymmetric-moving-median
     sp-asymmetric-moving-out
+    sp-blocks->file
     sp-change-limiter
     sp-clip~
     sp-convolution-filter!
@@ -193,14 +195,15 @@
   (define (sp-duration->sample-count seconds sample-rate) (* seconds sample-rate))
   (define (sp-sample-count->duration sample-count sample-rate) (/ sample-count sample-rate))
 
-  (define (sp-segments->file a path sample-rate)
-    "(#(#(sample ...):channel ...):segment ...) string -> unspecified
-     write chunks of audio data to file. first argument is a list of lists of sample vectors per channel"
+  (define (sp-call-with-output-file path channels sample-rate f)
+    (let* ((file (sp-file-open path sp-file-mode-write channels sample-rate)) (result (f file)))
+      (sp-file-close file) result))
+
+  (define (sp-blocks->file a path channels sample-rate size)
+    "((samples:channel ...):block ...) string integer integer integer -> unspecified"
     (if (not (null? a))
-      (let (out (sp-file-open path sp-file-mode-write (vector-length (first a)) sample-rate))
-        (each (l (segment) (sp-file-write out segment (sp-samples-length (vector-first segment))))
-          a)
-        (sp-file-close out))))
+      (sp-call-with-output-file path channels
+        sample-rate (l (file) (each (l (a) (sp-file-write file a size)) a)))))
 
   (define* (sp-moving-average source prev next distance #:optional start end)
     "sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector"
@@ -694,22 +697,29 @@
 
   (define-syntax-rule (seq-assoc-bind a (id ...) body ...) (ht-bind a (id ...) body ...))
 
-  (define* (seq-event-new f #:optional start event-state) "procedure [integer seq-assoc] -> vector"
-    ; event-state should be seq-assoc if used but is optional for cheap events
-    (vector (or start 0) f event-state))
+  (define* (seq-event-new start end f #:optional event-state)
+    "procedure integer [integer any] -> vector" (vector start end f event-state))
 
   (define seq-event-start (vector-accessor 0))
-  (define seq-event-f (vector-accessor 1))
-  (define seq-event-state (vector-accessor 2))
+  (define seq-event-end (vector-accessor 1))
+  (define seq-event-f (vector-accessor 2))
+  (define seq-event-state (vector-accessor 3))
   (define seq-event-start-set! (vector-setter 0))
-  (define seq-event-f-set! (vector-setter 1))
-  (define seq-event-state-set! (vector-setter 2))
+  (define seq-event-end-set! (vector-setter 1))
+  (define seq-event-f-set! (vector-setter 2))
+  (define seq-event-state-set! (vector-setter 3))
 
-  (define (seq time output size events)
-    "integer (samples ...) integer (event ...) any -> events
+  (define (seq time size output events)
+    "integer integer (samples:channel ...) (event ...) any -> events
      repeatedly calls functions starting from specified times and returns sample arrays of requested size.
-     the functions can write to the output sample array and stop being called after they return false"
-    (filter (l (a) (or (not (>= time (seq-event-start a))) ((seq-event-f a) time output size a)))
+     calls one or multiple functions at predefined times.
+     the functions can write to the output sample array.
+     size: the number of samples that should be written to output"
+    (filter
+      (l (a)
+        (let ((start (seq-event-start a)) (end (seq-event-end a)))
+          (if (< time start) #t
+            (if (> time end) #f (begin ((seq-event-f a) (- time start) size output a) #t)))))
       events))
 
   (define (sp-map-fold-integers count f . custom)
@@ -718,13 +728,4 @@
     (let loop ((i 0) (map-result null) (custom custom))
       (if (< i count)
         (apply (l (a . custom) (loop (+ 1 i) (pair a map-result) custom)) (apply f i custom))
-        (pair (reverse map-result) custom))))
-
-  (define (seq-series channel-count block-count block-size events)
-    "integer integer -> (samples ...)
-     call seq repeatedly to create a list of blocks of specified count and size"
-    (sp-map-fold-integers block-count
-      (l (t events)
-        (let (output (map-integers channel-count (l (a) (sp-samples-new block-size))))
-          (list output (seq (* t block-size) output block-size events))))
-      events)))
+        (pair (reverse map-result) custom)))))

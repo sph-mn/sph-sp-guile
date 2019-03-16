@@ -59,15 +59,14 @@ uint8_t* sp_guile_status_name(status_t a) {
 SCM scm_type_file;
 SCM scm_type_convolution_filter_state;
 SCM scm_rnrs_raise;
-/** scm channel data: #(#(sample ...):channel ...)
-  only the result array is allocated, data is referenced from the scm vectors.
+/** (samples ...):channels ...:block integer output -> status-t
   result is set to null if channel-data is empty */
 status_t scm_to_channel_data(SCM a, sp_channel_count_t* result_channel_count, sp_sample_t*** result_channel_data) {
   status_declare;
   sp_sample_t** channel_data;
   sp_channel_count_t channel_count;
   sp_channel_count_t i;
-  channel_count = scm_c_vector_length(a);
+  channel_count = scm_to_size_t((scm_length(a)));
   if (!channel_count) {
     *result_channel_data = 0;
     *result_channel_count = 0;
@@ -75,7 +74,8 @@ status_t scm_to_channel_data(SCM a, sp_channel_count_t* result_channel_count, sp
   };
   status_require((sph_helper_calloc((channel_count * sizeof(sp_sample_t*)), (&channel_data))));
   for (i = 0; (i < channel_count); i = (1 + i)) {
-    channel_data[i] = scm_to_sp_samples((scm_c_vector_ref(a, i)));
+    channel_data[i] = scm_to_sp_samples((scm_first(a)));
+    a = scm_tail(a);
   };
   *result_channel_data = channel_data;
   *result_channel_count = channel_count;
