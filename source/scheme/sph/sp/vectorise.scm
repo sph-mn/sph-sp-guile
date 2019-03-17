@@ -14,6 +14,8 @@
       display)
     (only (srfi srfi-1) drop split-at))
 
+  ; todo: needs to be adjusted for the new version of sp-fft
+
   (define sph-sp-vectorise-description
     "experimental. convert a time/magnitude samples array to sines and noise parameters that can be used to approximately recreate the sound.
      uses a multiresolution fast fourier transform based analysis that balances time and frequency resolution based on amount of change
