@@ -37,6 +37,7 @@
     (only (guile)
       const
       make-list
+      modulo
       random:exp
       random:uniform
       random:normal
@@ -51,12 +52,16 @@
   (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
   (define* (sp-noise-normal~ #:optional (state *random-state*)) (- (* 2 (random:normal state)) 1))
 
-  (define (sp-square~ t width) "integer integer -> sample"
-    (if (< (round t) (ceiling (/ width 2))) -1 1))
+  (define* (sp-square~ t #:optional (wavelength 96000))
+    "integer integer -> sample
+     center falls between two samples with even wavelengths"
+    (if (< (modulo (* 2 t) (* 2 wavelength)) wavelength) -1 1))
 
-  (define (sp-sine~ t width)
-    "return a value for a repeating sine with given sample width at sample offset t"
-    (sin (* t (/ (* 2 sp-pi) width))))
+  (define* (sp-sine~ t #:optional (wavelength 96000))
+    "integer integer -> sample
+     return a value for a repeating sine with a wavelength of width.
+     if wavelength is divisible by four then maxima are sample aligned"
+    (sin (* t (/ (* 2 sp-pi) wavelength))))
 
   (define (sp-clip~ a) "eventually adjust value to not exceed -1 or 1"
     (if (< 0 a) (min 1.0 a) (max -1.0 a)))
@@ -69,31 +74,6 @@
      * phase-size: value at which the cycle should repeat
      example: (sp-phase 0.0 (/ (* 2 sp-pi) 200) (* 2 sp-pi))"
     (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y)))
-
-  (define*
-    (sp-wave-event start end amplitudes wavelength #:key (phase 0) (generator sin)
-      (phase-length (* 2 sp-pi)))
-    "integer integer (partial-config ...) -> seq-event
-     partial-config: ((amplitude ...) wavelength phase-offset)
-     phase-offset: number
-     amplitude, wavelength: sp-path"
-    (seq-event-new start end
-      (let
-        ( (amplitudes (map sp-path amplitudes)) (wavelength (sp-path wavelength))
-          (null-point (make-list (length amplitudes) 0)))
-        (l (t size output event)
-          (seq-event-state-set! event
-            (sp-block t size
-              output
-              (l (t phase)
-                (let (wavelength (wavelength t))
-                  (if (zero? wavelength) (list null-point phase)
-                    (let*
-                      ( (phase (sp-phase phase (/ phase-length wavelength) phase-length))
-                        (sample (generator phase)))
-                      (list (map (l (a) (* (a t) sample)) amplitudes) phase)))))
-              (seq-event-state event)))))
-      phase))
 
   (define* (sp-path a #:optional (dimension 1))
     "-> procedure:{t -> number/(number ...)}
@@ -146,49 +126,55 @@
           (list output (apply f (* t size) size output state))))
       state))
 
-  (define (sp-band-partials t partials filter-states)
-    "-> (((sample:channel ...) . filter-state) ...)"
-    (map
-      (l (partial state) "-> ((sample ...) state)"
-        (apply
-          (l (amplitudes cutoff-l cutoff-h noise transition-l transition-h)
-            (apply
-              (l (sample state)
-                (let (sample (sp-samples-ref sample 0))
-                  (pair (map (l (a) (* (a t) sample)) amplitudes) state)))
-              (sp-windowed-sinc-bp-br (sp-samples-new 1 (noise)) (cutoff-l t)
-                (cutoff-h t) (transition-l t) (transition-h t) #f state)))
-          partial))
-      partials filter-states))
+  (define*
+    (sp-wave-event start end amplitudes wavelength #:key (phase 0) (generator sp-sine~)
+      (phase-length 96000))
+    "integer integer (partial-config ...) -> seq-event
+     partial-config: ((amplitude ...) wavelength phase-offset)
+     phase-offset: number
+     amplitude, wavelength: sp-path"
+    (seq-event-new start end
+      (let
+        ( (amplitudes (map sp-path amplitudes)) (wavelength (sp-path wavelength))
+          (null-samples (make-list (length amplitudes) 0)))
+        (l (t size output event)
+          (seq-event-state-set! event
+            (sp-block t size
+              output
+              (l (t phase)
+                (if (> t (seq-event-end event)) (list null-samples phase)
+                  (let (wavelength (wavelength t))
+                    (if (zero? wavelength) (list null-samples phase)
+                      (let*
+                        ( (phase (sp-phase phase (round (/ phase-length wavelength)) phase-length))
+                          (sample (generator phase)))
+                        (list (map (l (a) (* (a t) sample)) amplitudes) phase))))))
+              (seq-event-state event)))))
+      phase))
 
   (define*
-    (sp-band-event start end partials #:optional (default-noise sp-noise-uniform~)
-      (default-transition (const 0.01)))
-    "integer integer (partial-config ...) -> seq-event
-     partial-config: ((amplitude ...) cutoff-l cutoff-h [noise transition-l transition-h])
-     noise: procedure:{-> sample}
-     all other arguments: sp-path-argument
-     normalises partial configs and returns an event that creates blocks of partials"
+    (sp-band-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~)
+      (trn-l (const 0.01))
+      (trn-h (const 0.01)))
     (seq-event-new start end
-      (let*
-        ( (partials
-            (map-apply
-              (l* (#:key amp cut-l cut-h noise trn-l trn-h)
-                (list (map sp-path amp) (sp-path cut-l)
-                  (sp-path cut-h) (or noise default-noise)
-                  (or (and trn-l (sp-path trn-l)) default-transition)
-                  (or (and trn-h (sp-path trn-h)) default-transition)))
-              partials)))
+      (let
+        ( (amplitudes (map sp-path amplitudes)) (null-samples (make-list (length amplitudes) 0))
+          (cut-l (sp-path cut-l)) (cut-h (sp-path cut-h))
+          (trn-l (sp-path trn-l)) (trn-h (sp-path trn-h)))
         (l (t size output event)
           (seq-event-state-set! event
             (sp-block t size
               output
               (l (t state)
-                (let (samples-and-state (sp-band-partials t partials state))
-                  (list (apply map float-sum (map first samples-and-state))
-                    (map tail samples-and-state))))
+                (if (> t (seq-event-end event)) (list null-samples state)
+                  (apply
+                    (l (sample state)
+                      (let (sample (sp-samples-ref sample 0))
+                        (list (map (l (a) (* (a t) sample)) amplitudes) state)))
+                    (sp-windowed-sinc-bp-br (sp-samples-new 1 (noise)) (cut-l t)
+                      (cut-h t) (trn-l t) (trn-h t) #f state))))
               (seq-event-state event)))))
-      (make-list (length partials) #f)))
+      #f))
 
   (define* (seq-event-new start end f #:optional event-state)
     "procedure integer [integer any] -> vector" (vector start end f event-state))
@@ -211,8 +197,7 @@
     (filter
       (l (a)
         (let ((start (seq-event-start a)) (end (seq-event-end a)))
-          (if (< time start) #t
-            (if (> time end) #f (begin ((seq-event-f a) (- time start) size output a) #t)))))
+          (if (< time start) #t (if (> time end) #f ((seq-event-f a) (- time start) size output a)))))
       events))
 
   (define (sp-call-with-output-file path channels sample-rate f)
