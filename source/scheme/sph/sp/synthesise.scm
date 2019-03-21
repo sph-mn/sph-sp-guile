@@ -28,6 +28,7 @@
     sp-wave-event
     sph-sp-synthesis-description)
   (import
+    (ice-9 futures)
     (rnrs exceptions)
     (sph)
     (sph list)
@@ -42,7 +43,8 @@
       random:uniform
       random:normal
       *random-state*)
-    (only (sph number) float-sum))
+    (only (sph number) float-sum)
+    (only (srfi srfi-1) zip))
 
   (define sph-sp-synthesis-description
     "wave and noise generators, sequencing, block generation.
@@ -118,8 +120,7 @@
         state)))
 
   (define (sp-block-series channels count size f . state)
-    "integer integer integer procedure:{integer integer block any ... -> } any ... -> (samples ...)
-     call seq repeatedly to create a list of blocks of specified count and size"
+    "integer integer integer procedure:{integer integer block any ... -> } any ... -> (samples ...)"
     (apply sp-map-fold-integers count
       (l (t . state)
         (let (output (map-integers channels (l (a) (sp-samples-new size))))
@@ -137,19 +138,13 @@
       (let
         ( (amplitudes (map sp-path amplitudes)) (wavelength (sp-path wavelength))
           (null-samples (make-list (length amplitudes) 0)))
-        (l (t size output event)
-          (seq-event-state-set! event
-            (sp-block t size
-              output
-              (l (t phase)
-                (if (> t (seq-event-end event)) (list null-samples phase)
-                  (let (wavelength (wavelength t))
-                    (if (zero? wavelength) (list null-samples phase)
-                      (let*
-                        ( (phase (sp-phase phase (round (/ phase-length wavelength)) phase-length))
-                          (sample (generator phase)))
-                        (list (map (l (a) (* (a t) sample)) amplitudes) phase))))))
-              (seq-event-state event)))))
+        (l (t event)
+          (let ((wavelength (wavelength t)) (phase (seq-event-state event)))
+            (if (zero? wavelength) null-samples
+              (let*
+                ( (phase (sp-phase phase (round (/ phase-length wavelength)) phase-length))
+                  (sample (generator phase)))
+                (seq-event-state-set! event phase) (map (l (a) (* (a t) sample)) amplitudes))))))
       phase))
 
   (define*
@@ -158,22 +153,15 @@
       (trn-h (const 0.01)))
     (seq-event-new start end
       (let
-        ( (amplitudes (map sp-path amplitudes)) (null-samples (make-list (length amplitudes) 0))
-          (cut-l (sp-path cut-l)) (cut-h (sp-path cut-h))
+        ( (amplitudes (map sp-path amplitudes)) (cut-l (sp-path cut-l)) (cut-h (sp-path cut-h))
           (trn-l (sp-path trn-l)) (trn-h (sp-path trn-h)))
-        (l (t size output event)
-          (seq-event-state-set! event
-            (sp-block t size
-              output
-              (l (t state)
-                (if (> t (seq-event-end event)) (list null-samples state)
-                  (apply
-                    (l (sample state)
-                      (let (sample (sp-samples-ref sample 0))
-                        (list (map (l (a) (* (a t) sample)) amplitudes) state)))
-                    (sp-windowed-sinc-bp-br (sp-samples-new 1 (noise)) (cut-l t)
-                      (cut-h t) (trn-l t) (trn-h t) #f state))))
-              (seq-event-state event)))))
+        (l (t event)
+          (apply
+            (l (sample state)
+              (let (sample (sp-samples-ref sample 0)) (seq-event-state-set! event state)
+                (map (l (a) (* (a t) sample)) amplitudes)))
+            (sp-windowed-sinc-bp-br (sp-samples-new 1 (noise)) (cut-l t)
+              (cut-h t) (trn-l t) (trn-h t) #f (seq-event-state event)))))
       #f))
 
   (define* (seq-event-new start end f #:optional event-state)
@@ -187,18 +175,20 @@
   (define seq-event-end-set! (vector-setter 1))
   (define seq-event-f-set! (vector-setter 2))
   (define seq-event-state-set! (vector-setter 3))
+  (define (seq-events-new a) "list -> list" (list-sort-with-accessor < seq-event-start a))
 
-  (define (seq time size output events)
-    "integer integer (samples:channel ...) (event ...) any -> events
-     repeatedly calls functions starting from specified times and returns sample arrays of requested size.
-     calls one or multiple functions at predefined times.
-     the functions can write to the output sample array.
-     size: the number of samples that should be written to output"
-    (filter
-      (l (a)
-        (let ((start (seq-event-start a)) (end (seq-event-end a)))
-          (if (< time start) #t (if (> time end) #f ((seq-event-f a) (- time start) size output a)))))
-      events))
+  (define (seq time events)
+    "integer integer (samples:channel ...) (event ...) any -> (sample events)
+     calls one or multiple functions at predefined times and sums the results"
+    (define (join-samples samples)
+      (if (null? samples) samples (map-apply float-sum (apply zip samples))))
+    (let loop ((samples null) (result-events null) (events events))
+      (if (null? events) (list (join-samples samples) result-events)
+        (let* ((a (first events)) (start (seq-event-start a)))
+          (if (< time start) (list (join-samples samples) (append result-events events))
+            (if (> time (seq-event-end a)) (loop samples result-events (tail events))
+              (loop (pair ((seq-event-f a) (- time start) a) samples) (pair a result-events)
+                (tail events))))))))
 
   (define (sp-call-with-output-file path channels sample-rate f)
     (let* ((file (sp-file-open path sp-file-mode-write channels sample-rate)) (result (f file)))
