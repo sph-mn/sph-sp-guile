@@ -83,13 +83,15 @@ exit:
   return (status);
 };
 /** get a guile scheme object for channel data sample arrays. returns a list of sample-vectors.
-  eventually frees given data arrays */
+  eventually frees given channel data.
+  all sample vectors must have equal length */
 SCM scm_c_take_channel_data(sp_sample_t** a, sp_channel_count_t channel_count, sp_sample_count_t sample_count) {
   SCM scm_result;
-  scm_result = scm_c_make_vector(channel_count, SCM_BOOL_F);
+  scm_result = SCM_EOL;
+  /* sample vectors prepended in reverse order */
   while (channel_count) {
     channel_count = (channel_count - 1);
-    scm_c_vector_set_x(scm_result, channel_count, (scm_c_take_samples((a[channel_count]), sample_count)));
+    scm_result = scm_cons((scm_c_take_samples((a[channel_count]), sample_count)), scm_result);
   };
   free(a);
   return (scm_result);

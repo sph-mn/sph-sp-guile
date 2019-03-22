@@ -1,15 +1,16 @@
 (library (sph sp synthesise)
   (export
     seq
-    seq-event-end
-    seq-event-end-set!
-    seq-event-f
-    seq-event-f-set!
+    seq-block-series
+    seq-event-data
+    seq-event-data-end
+    seq-event-data-f
+    seq-event-data-start
+    seq-event-group
+    seq-event-list
     seq-event-new
-    seq-event-start
-    seq-event-start-set!
     seq-event-state
-    seq-event-state-set!
+    seq-event-state-update
     sp-band-event
     sp-band-partials
     sp-block
@@ -36,6 +37,7 @@
     (sph spline-path)
     (sph vector)
     (only (guile)
+      compose
       const
       make-list
       modulo
@@ -109,17 +111,17 @@
     (first
       (apply sp-fold-integers size
         (l (sample-index . state)
-          (apply
+          (apply f (+ t sample-index)
             (l (samples . state)
               (for-each
                 (l (a b)
                   (sp-samples-set! a sample-index (float-sum (sp-samples-ref a sample-index) b)))
                 output samples)
               state)
-            (apply f (+ t sample-index) state)))
+            state))
         state)))
 
-  (define (sp-block-series channels count size f . state)
+  (define (sp-block-series count channels size f . state)
     "integer integer integer procedure:{integer integer block any ... -> } any ... -> (samples ...)"
     (apply sp-map-fold-integers count
       (l (t . state)
@@ -140,11 +142,12 @@
           (null-samples (make-list (length amplitudes) 0)))
         (l (t event)
           (let ((wavelength (wavelength t)) (phase (seq-event-state event)))
-            (if (zero? wavelength) null-samples
+            (if (zero? wavelength) (pair null-samples event)
               (let*
                 ( (phase (sp-phase phase (round (/ phase-length wavelength)) phase-length))
                   (sample (generator phase)))
-                (seq-event-state-set! event phase) (map (l (a) (* (a t) sample)) amplitudes))))))
+                (pair (map (l (a) (* (a t) sample)) amplitudes)
+                  (seq-event-state-update event phase)))))))
       phase))
 
   (define*
@@ -158,37 +161,12 @@
         (l (t event)
           (apply
             (l (sample state)
-              (let (sample (sp-samples-ref sample 0)) (seq-event-state-set! event state)
-                (map (l (a) (* (a t) sample)) amplitudes)))
+              (let (sample (sp-samples-ref sample 0))
+                (pair (map (l (a) (* (a t) sample)) amplitudes)
+                  (seq-event-state-update event state))))
             (sp-windowed-sinc-bp-br (sp-samples-new 1 (noise)) (cut-l t)
               (cut-h t) (trn-l t) (trn-h t) #f (seq-event-state event)))))
       #f))
-
-  (define* (seq-event-new start end f #:optional event-state)
-    "procedure integer [integer any] -> vector" (vector start end f event-state))
-
-  (define seq-event-start (vector-accessor 0))
-  (define seq-event-end (vector-accessor 1))
-  (define seq-event-f (vector-accessor 2))
-  (define seq-event-state (vector-accessor 3))
-  (define seq-event-start-set! (vector-setter 0))
-  (define seq-event-end-set! (vector-setter 1))
-  (define seq-event-f-set! (vector-setter 2))
-  (define seq-event-state-set! (vector-setter 3))
-  (define (seq-events-new a) "list -> list" (list-sort-with-accessor < seq-event-start a))
-
-  (define (seq time events)
-    "integer integer (samples:channel ...) (event ...) any -> (sample events)
-     calls one or multiple functions at predefined times and sums the results"
-    (define (join-samples samples)
-      (if (null? samples) samples (map-apply float-sum (apply zip samples))))
-    (let loop ((samples null) (result-events null) (events events))
-      (if (null? events) (list (join-samples samples) result-events)
-        (let* ((a (first events)) (start (seq-event-start a)))
-          (if (< time start) (list (join-samples samples) (append result-events events))
-            (if (> time (seq-event-end a)) (loop samples result-events (tail events))
-              (loop (pair ((seq-event-f a) (- time start) a) samples) (pair a result-events)
-                (tail events))))))))
 
   (define (sp-call-with-output-file path channels sample-rate f)
     (let* ((file (sp-file-open path sp-file-mode-write channels sample-rate)) (result (f file)))
@@ -208,4 +186,42 @@
      a list ((0 samples) (8 samples) (10 samples))"
     (let loop ((b b) (offset start))
       (if (null? b) b
-        (pair (pair offset (first b)) (loop (tail b) (+ (sp-samples-length (first b)) offset)))))))
+        (pair (pair offset (first b)) (loop (tail b) (+ (sp-samples-length (first b)) offset))))))
+
+  (define* (seq-event-new start end f #:optional state)
+    "procedure integer [integer any] -> seq-event" (pair state (vector start end f)))
+
+  (define (seq-event-list . a) "event ... -> list"
+    (list-sort-with-accessor < (compose seq-event-data-start seq-event-data) a))
+
+  (define (seq-event-group start end events)
+    (seq-event-new start end
+      (l (t event)
+        (seq t (l (samples state) (pair samples (seq-event-state-update event state)))
+          (seq-event-state event)))
+      events))
+
+  (define (seq-event-state-update a state) (pair state (tail a)))
+  (define seq-event-data-start (vector-accessor 0))
+  (define seq-event-data-end (vector-accessor 1))
+  (define seq-event-data-f (vector-accessor 2))
+  (define seq-event-data tail)
+  (define seq-event-state first)
+
+  (define (seq time c events)
+    "integer seq-events procedure:{samples rest-events -> any} -> any
+     calls one or multiple functions at predefined times and sums the resulting samples"
+    (define (finish results rest c)
+      (if (null? results) (c null rest)
+        (c (map-apply float-sum (apply zip (map first results))) (append (map tail results) rest))))
+    (let loop ((results null) (rest events))
+      (if (null? rest) (finish results rest c)
+        (let* ((a (first rest)) (b (seq-event-data a)) (start (seq-event-data-start b)))
+          (if (< time start) (finish results rest c)
+            (if (> time (seq-event-data-end b)) (loop results (tail rest))
+              (loop (pair ((seq-event-data-f b) (- time start) a) results) (tail rest))))))))
+
+  (define (seq-block-series events count channels size)
+    (first
+      (sp-block-series count channels
+        size (l (t size output events) (sp-block t size output seq events)) events))))

@@ -26,8 +26,7 @@
       ( (file-out (sp-file-open test-env-file-path sp-file-mode-write channel-count sample-rate))
         (data
           ; make data for channels filled with samples of value n
-          (list->vector
-            (map-integers channel-count (l (n) (sp-samples-new segment-size (* (+ n 1) 0.5)))))))
+          (map-integers channel-count (l (n) (sp-samples-new segment-size (* (+ n 1) 0.5))))))
       (assert-and
         (assert-equal "properties" (list #f 0)
           (list (sp-file-input? file-out) (sp-file-position file-out)))

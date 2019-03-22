@@ -101,12 +101,14 @@
 (define (scm-c-take-channel-data a channel-count sample-count)
   (SCM sp-sample-t** sp-channel-count-t sp-sample-count-t)
   "get a guile scheme object for channel data sample arrays. returns a list of sample-vectors.
-  eventually frees given data arrays"
+  eventually frees given channel data.
+  all sample vectors must have equal length"
   (declare scm-result SCM)
-  (set scm-result (scm_c_make_vector channel-count SCM-BOOL-F))
+  (set scm-result SCM-EOL)
+  (sc-comment "sample vectors prepended in reverse order")
   (while channel-count
-    (set channel-count (- channel-count 1))
-    (scm-c-vector-set-x
-      scm-result channel-count (scm-c-take-samples (array-get a channel-count) sample-count)))
+    (set
+      channel-count (- channel-count 1)
+      scm-result (scm-cons (scm-c-take-samples (array-get a channel-count) sample-count) scm-result)))
   (free a)
   (return scm-result))
