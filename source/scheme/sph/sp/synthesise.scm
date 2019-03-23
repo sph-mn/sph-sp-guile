@@ -91,16 +91,10 @@
     (cond
       ((procedure? a) a)
       ( (spline-path? a)
-        (spline-path->procedure
-          (if dimension
-            (let (a (spline-path-copy a))
-              (spline-path-output-mapper-set! a (l (a t) (list-ref a dimension))) a)
-            a)))
+        (let (b (spline-path->procedure a)) (if dimension (l (t) (list-ref (b t) dimension)) b)))
       ((number? a) (const a))
       ( (list? a)
-        (if (list? (first a))
-          (spline-path->procedure
-            (spline-path-new a #f (and dimension (l (a t) (list-ref a dimension)))))
+        (if (list? (first a)) (sp-path (spline-path-new a) dimension)
           (const (if dimension (list-ref a dimension) a))))
       (else (raise (q invalid-sp-path)))))
 
