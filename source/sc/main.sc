@@ -455,7 +455,8 @@
     0
     scm-sp-convolution-filter!
     "out in ir-f ir-f-arguments state -> state
-     samples samples procedure list sp-convolution-filter-state -> sp-convolution-filter-state")
+     samples samples procedure list false/sp-convolution-filter-state -> sp-convolution-filter-state
+     if state is false then a new state object will be returned")
   (scm-c-define-procedure-c
     "sp-moving-average!"
     5
