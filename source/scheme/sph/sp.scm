@@ -56,6 +56,7 @@
     sp-samples-copy-zero
     sp-samples-copy-zero*
     sp-samples-divide
+    sp-samples-each-index
     sp-samples-extract
     sp-samples-extract-padded
     sp-samples-from-list
@@ -121,6 +122,7 @@
   (define sp-samples-map-with f64vector-map-with)
   (define sp-samples-map-with-index f64vector-map-with-index)
   (define sp-samples-map! f64vector-map!)
+  (define sp-samples-each-index f64vector-each-index)
   (define sp-samples-set! f64vector-set!)
   (define sp-samples-ref f64vector-ref)
   (define sp-samples? f64vector?)

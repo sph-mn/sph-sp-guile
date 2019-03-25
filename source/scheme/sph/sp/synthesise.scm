@@ -1,7 +1,6 @@
 (library (sph sp synthesise)
   (export
     seq
-    seq-block-series
     seq-event-data
     seq-event-data-end
     seq-event-data-f
@@ -11,6 +10,7 @@
     seq-event-new
     seq-event-state
     seq-event-state-update
+    seq-series
     sp-band-event
     sp-band-partials
     sp-block
@@ -46,6 +46,7 @@
       random:normal
       *random-state*)
     (only (sph number) float-sum)
+    (only (sph other) each-integer)
     (only (srfi srfi-1) zip))
 
   (define sph-sp-synthesis-description
@@ -145,22 +146,43 @@
       phase))
 
   (define*
-    (sp-band-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~)
-      (trn-l (const 0.01))
-      (trn-h (const 0.01)))
-    (seq-event-new start end
-      (let
-        ( (amplitudes (map sp-path amplitudes)) (cut-l (sp-path cut-l)) (cut-h (sp-path cut-h))
-          (trn-l (sp-path trn-l)) (trn-h (sp-path trn-h)))
-        (l (t event)
-          (apply
-            (l (sample state)
-              (let (sample (sp-samples-ref sample 0))
-                (pair (map (l (a) (* (a t) sample)) amplitudes)
-                  (seq-event-state-update event state))))
-            (sp-windowed-sinc-bp-br (sp-samples-new 1 (noise)) (cut-l t)
-              (cut-h t) (trn-l t) (trn-h t) #f (seq-event-state event)))))
-      #f))
+    (sp-band-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~) (trn-l 0.01)
+      (trn-h 0.01)
+      (reject #f))
+    (let (amplitudes (map sp-path amplitudes))
+      (seq-event-new start end
+        (if (and (number? cut-l) (number? cut-h) (number? trn-l) (number? trn-h))
+          (l (t size output event)
+            (apply
+              (l (samples state)
+                (each
+                  (l (output a)
+                    (sp-samples-each-index
+                      (l (sample-index)
+                        (sp-samples-set! output sample-index
+                          (* (a sample-index) (sp-samples-ref samples sample-index))))
+                      output))
+                  output amplitudes)
+                (seq-event-state-update event state))
+              (sp-windowed-sinc-bp-br (sp-samples-new size (l (a) (noise))) cut-l
+                cut-h trn-l trn-h reject (seq-event-state event))))
+          (let
+            ( (cut-l (sp-path cut-l)) (cut-h (sp-path cut-h)) (trn-l (sp-path trn-l))
+              (trn-h (sp-path trn-h)))
+            (l (t size output event)
+              (fold-integers size (seq-event-state event)
+                (l (sample-index state)
+                  (apply
+                    (l (samples state)
+                      (let (sample (sp-samples-ref samples 0))
+                        (each
+                          (l (output a)
+                            (sp-samples-set! output sample-index (* (a sample-index) sample)))
+                          output amplitudes)
+                        state))
+                    (sp-windowed-sinc-bp-br (sp-samples-new 1 (l (a) (noise))) (cut-l t)
+                      (cut-h t) (trn-l t) (trn-h t) reject state)))))))
+        #f)))
 
   (define (sp-call-with-output-file path channels sample-rate f)
     (let* ((file (sp-file-open path sp-file-mode-write channels sample-rate)) (result (f file)))
@@ -190,10 +212,7 @@
 
   (define (seq-event-group start end events)
     (seq-event-new start end
-      (l (t event)
-        (seq t (l (samples state) (pair samples (seq-event-state-update event state)))
-          (seq-event-state event)))
-      events))
+      (l (t size output event) (seq t size output (seq-event-state event))) events))
 
   (define (seq-event-state-update a state) (pair state (tail a)))
   (define seq-event-data-start (vector-accessor 0))
@@ -202,20 +221,49 @@
   (define seq-event-data tail)
   (define seq-event-state first)
 
-  (define (seq time c events)
-    "integer seq-events procedure:{samples rest-events -> any} -> any
+  (define (seq time size output events)
+    "integer integer seq-events procedure:{samples rest-events -> any} -> any
      calls one or multiple functions at predefined times and sums the resulting samples"
-    (define (finish results rest c)
-      (if (null? results) (c null rest)
-        (c (map-apply float-sum (apply zip (map first results))) (append (map tail results) rest))))
-    (let loop ((results null) (rest events))
-      (if (null? rest) (finish results rest c)
-        (let* ((a (first rest)) (b (seq-event-data a)) (start (seq-event-data-start b)))
-          (if (< time start) (finish results rest c)
-            (if (> time (seq-event-data-end b)) (loop results (tail rest))
-              (loop (pair ((seq-event-data-f b) (- time start) a) results) (tail rest))))))))
+    ; find events that are due in block, allocate an empty samples vector,
+    ; evaluate events possibly in parallel and merge the results
+    (define (finish results rest-events)
+      (let loop ((results results) (events null))
+        (if (null? results) (append events rest-events)
+          (apply
+            (l (offset event-output-size event-output event)
+              (each
+                (l (output event-output)
+                  (each-integer event-output-size
+                    (l (sample-index)
+                      (sp-samples-set! output (+ offset sample-index)
+                        (float-sum (sp-samples-ref output (+ offset sample-index))
+                          (sp-samples-ref event-output sample-index))))))
+                output event-output)
+              (loop (tail results) (pair event events)))
+            (touch (first results))))))
+    (let ((block-end (+ time size)) (channels (length output)))
+      (let loop ((results null) (rest events))
+        (if (null? rest) (finish results rest)
+          (let*
+            ( (event (first rest)) (data (seq-event-data event)) (start (seq-event-data-start data))
+              (end (seq-event-data-end data)))
+            (if (< block-end start) (finish results rest)
+              (if (> time end) (loop results (tail rest))
+                (loop
+                  (pair
+                    (future
+                      (let*
+                        ( (block-offset (if (> start time) (- start time) 0))
+                          (size (- (if (< end block-end) (- block-end end) block-end) block-offset))
+                          (output (map-integers channels (l (n) (sp-samples-new size)))))
+                        (list block-offset size
+                          output ((seq-event-data-f data) (- time start) size output event))))
+                    results)
+                  (tail rest)))))))))
 
-  (define (seq-block-series events count channels size)
+  #;(define (seq-series events count channels size)
     (first
-      (sp-block-series count channels
-        size (l (t size output events) (sp-block t size output seq events)) events))))
+      (apply sp-map-fold-integers count
+        (l (t events) (display-line (string-append "processing block " (number->string t)))
+          (seq t channels size list events))
+        events))))
