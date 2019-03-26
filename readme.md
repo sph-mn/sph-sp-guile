@@ -53,6 +53,7 @@ installed files
 
 # modules
 ## (sph sp)
+```
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
 f64vector-sum :: f64vector [start end] -> number
@@ -133,6 +134,9 @@ sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-sta
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
 sph-sp-description
+```
 
 ## (sph sp vectorise)
+```
 sp-vectorise :: samples [integer] -> (series-element ...)
+```
