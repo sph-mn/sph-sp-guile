@@ -7,7 +7,9 @@
     sp-asymmetric-moving-average
     sp-asymmetric-moving-median
     sp-asymmetric-moving-out
+    sp-block-new
     sp-block-overlap
+    sp-call-with-output-file
     sp-change-limiter
     sp-convolution-filter!
     sp-convolve
@@ -103,6 +105,7 @@
       system*
       tmpnam)
     (only (rnrs sorting) list-sort)
+    (only (sph list) map-integers)
     (only (sph math) absolute-threshold differences)
     (only (sph number) float-sum)
     (only (sph other) each-integer)
@@ -114,7 +117,10 @@
   (define* (sp-samples-new length #:optional (value 0))
     (if (procedure? value) (f64vector-create length value) (make-f64vector length value)))
 
-  (define sph-sp-description "sph-sp bindings and additional utilities")
+  (define sph-sp-description
+    "sph-sp bindings and additional utilities.
+     block: (samples:channel ...)")
+
   (define sp-pi (* 4 (atan 1)))
   (define sp-float-sum float-sum)
   (define sp-sample-sum float-sum)
@@ -134,6 +140,7 @@
   (define sp-samples-copy f64vector-copy)
   (define (sp-samples-divide a divisor) (sp-samples-map (l (b) (if (zero? b) b (/ b divisor))) a))
   (define (sp-samples-multiply a factor) (sp-samples-map (l (b) (* b factor)) a))
+  (define (sp-block-new channels size) (map-integers channels (l (n) (sp-samples-new size))))
 
   (define (sp-fftr a) "samples -> #(complex ...)"
     (let*
@@ -229,6 +236,10 @@
   (define (sp-sinc a) "the normalised sinc function"
     ; re-implemented in scheme
     (if (= 0 a) 1 (/ (sin (* sp-pi a)) (* sp-pi a))))
+
+  (define (sp-call-with-output-file path channels sample-rate f)
+    (let* ((file (sp-file-open path sp-file-mode-write channels sample-rate)) (result (f file)))
+      (sp-file-close file) result))
 
   (define (sp-file-fold f segment-size path . custom)
     "procedure integer string any ... -> any
