@@ -1,6 +1,10 @@
 #!/bin/sh
 echo "## (sph sp)"
+echo "~~~"
 scm-list-documentation "sph sp"
+echo "~~~"
 echo
 echo "## (sph sp vectorise)"
+echo "~~~"
 scm-list-documentation "sph sp vectorise"
+echo "~~~"

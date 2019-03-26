@@ -3,6 +3,7 @@
     seq
     seq-block-series
     seq-block-series->file
+    seq-block-series->list
     seq-event-data
     seq-event-data-end
     seq-event-data-f
@@ -51,7 +52,7 @@
     "wave and noise generators, sequencing, block generation.
      time is in number of samples.
      an sp-path is an argument that sp-path->t-function accepts
-                      ")
+                                      ")
 
   (define* (sp-noise-uniform~ #:optional (state *random-state*)) (- (* 2 (random:uniform state)) 1))
   (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
@@ -112,18 +113,18 @@
         ( (amplitudes (map sp-path->t-function amplitudes))
           (wavelength (sp-path->t-function wavelength))
           (null-samples (make-list (length amplitudes) 0)))
-        (l (t size output event)
+        (l (time size output event)
           (seq-event-state-update event
             (fold-integers size (seq-event-state event)
               (l (sample-index phase)
-                (let (wavelength (wavelength t))
+                (let (wavelength (wavelength time))
                   (if (zero? wavelength) phase
                     (let*
                       ( (phase (sp-phase phase (round (/ phase-length wavelength)) phase-length))
                         (sample (generator phase)))
                       (each
                         (l (output a)
-                          (sp-samples-set! output sample-index (* (a (+ t sample-index)) sample)))
+                          (sp-samples-set! output sample-index (* (a (+ time sample-index)) sample)))
                         output amplitudes)
                       phase))))))))
       phase))
@@ -196,8 +197,11 @@
     (list-sort-with-accessor < (compose seq-event-data-start seq-event-data) a))
 
   (define (seq-event-group start end events) "integer integer seq-events -> seq-event"
+    "! todo: concurrency issue"
     (seq-event-new start end
-      (l (t size output event) (seq t size output (seq-event-state event))) events))
+      (l (t size output event)
+        (seq-event-state-update event (seq t size output (seq-event-state event))))
+      events))
 
   (define (seq-event-state-update a state) (pair state (tail a)))
   (define seq-event-data-start (vector-accessor 0))
@@ -245,20 +249,32 @@
                           (size (- size block-offset block-offset-right))
                           (output (map-integers channels (l (n) (sp-samples-new size)))))
                         (list block-offset size
-                          output ((seq-event-data-f data) (- time start) size output event))))
+                          output
+                          ( (seq-event-data-f data) (- (+ time block-offset) start) size
+                            output event))))
                     results)
                   (tail rest)))))))))
 
-  (define* (seq-block-series time channels count events f #:key (block-size 96000) (progress #f))
-    "integer integer integer seq-events procedure:{(samples:channel ...) seq-events -> seq-events} -> seq-events"
-    (fold-integers count events
-      (l (block-index events)
+  (define*
+    (seq-block-series time channels count events f custom #:key (block-size 96000) (progress #f))
+    "integer integer integer seq-events procedure:{(samples:channel ...) seq-events custom ... -> (seq-events custom ...)} -> (seq-events custom ...)"
+    (apply sp-fold-integers count
+      (l (block-index events . custom)
         (if progress
           (begin
             (display-line (string-append "processing block " (number->string block-index) "..."))
             (if (= count (+ 1 block-index)) (display-line "processing finished"))))
         (let (output (sp-block-new channels block-size))
-          (f output (seq time block-size output events))))))
+          (apply f output (seq time block-size output events) custom)))
+      events custom))
+
+  (define*
+    (seq-block-series->list time channels count events #:key (block-size 96000) (progress #f))
+    "-> (events block ...)"
+    (seq-block-series time channels
+      count events
+      (l (output events . result) (pair events (pair output result))) null
+      #:block-size block-size #:progress progress))
 
   (define*
     (seq-block-series->file path time channels count events #:key (block-size 96000)
@@ -270,5 +286,5 @@
       (l (file)
         (seq-block-series time channels
           count events
-          (l (output events) (sp-file-write file output block-size) events) #:block-size
-          block-size #:progress progress)))))
+          (l (output events) (sp-file-write file output block-size) (list events)) null
+          #:block-size block-size #:progress progress)))))
