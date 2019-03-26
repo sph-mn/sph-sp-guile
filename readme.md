@@ -53,35 +53,18 @@ installed files
 
 # modules
 ## (sph sp)
-```
-differences :: a ->
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
 f64vector-sum :: f64vector [start end] -> number
-seq :: integer (samples ...) integer (event ...) any -> events
-seq-assoc :: a key
-seq-assoc-bind :: a (id ...) body ...
-seq-assoc-new ::  ->
-seq-assocq :: a key
-seq-event-f :: a ->
-seq-event-f-set! :: a value ->
-seq-event-new :: procedure [integer seq-assoc] -> vector
-seq-event-start :: a ->
-seq-event-start-set! :: a value ->
-seq-event-state :: a ->
-seq-event-state-set! :: a value ->
-seq-series :: integer integer -> (samples ...)
 sp-asymmetric-moving :: procedure real integer list -> (any:result-value . state)
 sp-asymmetric-moving-average :: real integer list -> (result-value . state)
 sp-asymmetric-moving-median :: real integer list -> (result-value . state)
 sp-asymmetric-moving-out :: procedure real integer (real:previous-value ...) -> (any:result-value previous-value ...):state
+sp-block-overlap :: false/samples false/samples [real] -> false/samples
 sp-change-limiter :: real integer real list -> (real:result-value real ...):state
-sp-clip~ :: a ->
 sp-convolution-filter! :: a b c d e ->
 sp-convolve :: a b [carryover carryover-len] ->
 sp-convolve! :: out a b carryover [carryover-len] -> unspecified
-sp-duration->sample-count :: seconds sample-rate ->
-sp-factor->rads :: a sample-rate ->
 sp-fft :: #(complex ...) -> #(complex ...)
 sp-fft-resynth :: samples procedure:{#(complex ...) -> #(complex ...)} -> samples
 sp-ffti :: #(complex ...) -> #(complex ...)
@@ -89,6 +72,8 @@ sp-fftr :: samples -> #(complex ...)
 sp-fftri :: #(complex ...) -> samples
 sp-file-channel-count :: sp-file -> integer
 sp-file-close :: sp-file -> boolean
+sp-file-fold :: procedure integer string any ... -> any
+sp-file-fold-overlap :: procedure integer real string any ... -> any
 sp-file-input? :: sp-file -> boolean
 sp-file-mode-read
 sp-file-mode-read-write
@@ -102,55 +87,30 @@ sp-file-sample-rate :: sp-file -> integer
 sp-file-write :: sp-file (sample-vector ...):channel-data [integer:sample-count] -> unspecified
 sp-filter-bank :: samples ((cutoff-l cutoff-h transition-l transition-h) ...) list -> ((samples ...) . state)
 sp-float-sum :: a ... ->
-sp-fold-file :: procedure integer string any ... -> any
-sp-fold-file-overlap :: procedure integer real string any ... -> any
 sp-fold-frames :: procedure samples integer real:0..1 any ... -> (any ...):custom
 sp-fold-integers :: integer procedure any ... -> (any ...)
 sp-grain-map :: samples/integer integer procedure false/state -> (false/samples:output . state)
-sp-hz->rads :: real -> real:radians-per-second
 sp-map-fold-integers :: count f custom ... ->
-sp-moving-average :: sample-vector false/sample-vector false/sample-vector integer [integer/false integer/false] -> sample-vector
+sp-moving-average :: samples false/samples false/samples integer [integer/false integer/false] -> samples
 sp-moving-average! :: result source previous next radius [start end] -> unspecified
-sp-noise-band :: -> (sample . noise-band-state)
-sp-noise-exponential~ :: [state] ->
-sp-noise-normal~ :: [state] ->
-sp-noise-uniform~ :: [state] ->
-sp-overlap :: false/samples false/samples [real] -> false/samples
-sp-phase :: number number number -> number
-sp-phase-cycle :: integer integer false/previous-result -> (result _ ...):state
-sp-phase-sine-width :: integer:sample-count integer:sample-count -> real
 sp-pi
-sp-plot-fft :: a ->
-sp-plot-fft->file :: a path ->
-sp-plot-fft-display-file :: path ->
 sp-plot-samples :: samples [#:type #:color] -> unspecified
 sp-plot-samples->file :: a path ->
 sp-plot-samples-display-file :: string #:type symbol:lines/points #:color string -> unspecified
-sp-plot-segments :: a path channel ->
-sp-plot-segments->file :: (#(vector:channel ...) ...) string ->
 sp-plot-spectrum :: a ->
 sp-plot-spectrum->file :: a path ->
 sp-plot-spectrum-display-file :: path ->
-sp-rads->factor :: real integer -> real
-sp-rads->hz :: real -> real:hertz
-sp-rectangle~ :: integer:sample-count ... -> real:sample
-sp-rectangular :: integer:sample-count ... -> real:sample
-sp-sample-align :: procedure procedure integer integer any ... -> (result-value . (x width custom ...))
-sp-sample-align-list :: size f update-f custom ... ->
-sp-sample-count->duration :: sample-count sample-rate ->
 sp-sample-sum :: a ... ->
 sp-samples->list :: v ->
-sp-samples-apply-blackman-window :: a ->
-sp-samples-apply-hann-window :: a ->
 sp-samples-copy :: xvector -> xvector
 sp-samples-copy-zero :: a ->
 sp-samples-copy-zero* :: a c ->
 sp-samples-divide :: a divisor ->
+sp-samples-each-index :: procedure:{integer integer:a-length -> unspecified} xvector -> unspecified
 sp-samples-extract :: integer integer samples -> samples
 sp-samples-extract-padded :: samples integer integer -> samples
 sp-samples-from-list :: elts ->
 sp-samples-length :: v ->
-sp-samples-list-add-offsets :: (samples ...) [integer] -> ((sample-offset samples) ...)
 sp-samples-map :: procedure:{any:element ... -> any} xvector ... -> xvector
 sp-samples-map! :: procedure:{any:element ... -> any} xvector ... -> unspecified
 sp-samples-map-with :: procedure:{any:variable any:element ... -> any} any:variable xvector -> xvector
@@ -163,17 +123,8 @@ sp-samples-split :: samples integer -> (samples ...)
 sp-samples-threshold :: a limit ->
 sp-samples? :: obj ->
 sp-scheduler :: additions integer state/false -> (output:samples/false state)
-sp-segments->file :: (#(#(sample ...):channel ...):segment ...) string -> unspecified
 sp-sinc :: a ->
-sp-sine-of-width :: x width ->
-sp-sines~ :: number:radians number:radians-per-s ... -> real:0..1:sample
-sp-sine~ :: real:radians:phase-offset real:radians-per-s -> real:sample
-sp-spectral-inversion :: a ->
-sp-spectral-reversal :: a ->
 sp-spectrum :: samples -> #(real ...)
-sp-triangle :: x a b height ->
-sp-triangle~ :: integer:sample-count ... -> real:sample
-sp-window-blackman :: real width -> real
 sp-window-hann :: offset size ->
 sp-windowed-sinc-bp-br :: samples real real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-bp-br! :: a b c d e f g h ->
@@ -181,9 +132,7 @@ sp-windowed-sinc-bp-br-ir :: a b c d e ->
 sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
-```
+sph-sp-description
 
 ## (sph sp vectorise)
-```
 sp-vectorise :: samples [integer] -> (series-element ...)
-```
