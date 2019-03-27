@@ -4,6 +4,12 @@ echo "~~~"
 scm-list-documentation "sph sp"
 echo "~~~"
 echo
+echo "## (sph sp synthesise)"
+echo "sequencing and sound synthesis with composable sequencer objects"
+echo "~~~"
+scm-list-documentation "sph sp synthesise"
+echo "~~~"
+echo
 echo "## (sph sp vectorise)"
 echo "~~~"
 scm-list-documentation "sph sp vectorise"

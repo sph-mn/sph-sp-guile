@@ -51,10 +51,9 @@
     (only (srfi srfi-1) zip))
 
   (define sph-sp-synthesis-description
-    "wave and noise generators, sequencing, block generation.
+    "sequencing and sound synthesis with composable sequencer objects.
      time is in number of samples.
-     an sp-path is an argument that sp-path->t-function accepts
-                                                                                   ")
+     an sp-path is an argument that the sp-path->t-function accepts")
 
   (define* (sp-noise-uniform~ #:optional (state *random-state*)) (- (* 2 (random:uniform state)) 1))
   (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
@@ -217,11 +216,29 @@
 
   (define* (seq-parallel time offset size output events)
     "integer integer integer (samples:channel ...) seq-events -> seq-events
-     calls one or multiple functions in parallel at predefined times and sums result samples.
+     calls one or multiple functions that add to the given output block in parallel at predefined times and sums result samples.
      write to output after given offset. output samples length must be equal or greater than offset + size.
-     the returned objects contains the updated events list and can be passed to the next call to seq-parallel or seq.
+     the returned object is are the events with finished events removed and can be passed to the next call to seq-parallel or seq.
      seq-parallel can be nested, but unless more cpu cores are available then using seq will be more efficient.
-     events are created with seq-events-new and seq-event-new"
+     events are created with seq-events-new and seq-event-new.
+     # example
+     (let
+       ( (result (sp-block-new 1 96000))
+         (events
+           (seq-events-new
+             (seq-event-new 10000 48000
+               (lambda (time offset size output event)
+                 (for-each
+                   (lambda (output)
+                     (each-integer size
+                       (l (index)
+                         (sp-samples-set! output (+ offset index)
+                           (sp-sample-sum (sp-samples-ref output (+ offset index))
+                             (sp-sine~ (+ index time) 5000))))))
+                   output)
+                 event)))))
+       (seq-parallel 0 0 96000 result events)
+       (sp-plot-samples (first result)))"
     ; take sorted event objects that have a start/end time and a function that is called with a time offset and an output array.
     ; each block, filter events that write into the block, allocate arrays for the portions they write to, call the events in parallel,
     ; merge the event blocks into the given output block. return a list of events with finished events removed.

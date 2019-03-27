@@ -46,7 +46,7 @@ installed files
 ;-- basic io
 (define file (sp-file-open "/tmp/sp-file.wav" sp-port-mode-write channel-count sample-rate))
 
-; vector with one sample vector per channel
+; list with one sample vector per channel
 (sp-port-write file (list (f64vector 1 2 3 4)) 4)
 (sp-port-close file)
 ```
@@ -138,7 +138,38 @@ sp-windowed-sinc-lp-hp-ir :: a b c ->
 sph-sp-description
 ~~~
 
+## (sph sp synthesise)
+sequencing and sound synthesis with composable sequencer objects
+~~~
+seq :: integer integer integer (samples:channel ...) seq-events -> seq-events
+seq-block-series :: integer integer integer seq-events procedure:{(samples:channel ...) seq-events custom ... -> (seq-events custom ...)} -> (seq-events custom ...)
+seq-block-series->file :: string integer integer seq-events [#:block-size integer #:sample-rate integer] -> seq-events
+seq-block-series->list :: -> (events block ...)
+seq-event-data :: a ->
+seq-event-data-end :: a ->
+seq-event-data-f :: a ->
+seq-event-data-start :: a ->
+seq-event-group :: start end events ->
+seq-event-new :: procedure integer [integer any] -> seq-event
+seq-event-state :: a ->
+seq-event-state-update :: a state ->
+seq-events-new :: seq-event ... -> seq-events
+seq-parallel :: integer integer integer (samples:channel ...) seq-events -> seq-events
+sp-band-event :: integer integer (sp-path ...) sp-path sp-path #:noise procedure #:trn-l sp-path #:trn-h sp-path #:reject boolean -> event
+sp-blocks->file :: ((samples:channel ...):block ...) string integer integer integer -> unspecified
+sp-clip~ :: a ->
+sp-noise-exponential~ :: [state] ->
+sp-noise-normal~ :: [state] ->
+sp-noise-uniform~ :: [state] ->
+sp-phase :: number number number -> number
+sp-sine~ :: integer integer -> sample
+sp-square~ :: integer integer -> sample
+sp-wave-event :: integer integer (partial-config ...) -> seq-event
+sph-sp-synthesis-description
+~~~
+
 ## (sph sp vectorise)
+get sine and noise parameters for a sound. needs update
 ~~~
 sp-vectorise :: samples [integer] -> (series-element ...)
 ~~~
