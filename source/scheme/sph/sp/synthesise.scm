@@ -9,10 +9,11 @@
     seq-event-data-f
     seq-event-data-start
     seq-event-group
-    seq-event-list
     seq-event-new
     seq-event-state
     seq-event-state-update
+    seq-events-new
+    seq-parallel
     sp-band-event
     sp-band-partials
     sp-blocks->file
@@ -35,6 +36,7 @@
     (sph sp)
     (sph spline-path)
     (sph vector)
+    (system foreign)
     (only (guile)
       compose
       const
@@ -52,7 +54,7 @@
     "wave and noise generators, sequencing, block generation.
      time is in number of samples.
      an sp-path is an argument that sp-path->t-function accepts
-                                      ")
+                                                                                   ")
 
   (define* (sp-noise-uniform~ #:optional (state *random-state*)) (- (* 2 (random:uniform state)) 1))
   (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
@@ -113,7 +115,7 @@
         ( (amplitudes (map sp-path->t-function amplitudes))
           (wavelength (sp-path->t-function wavelength))
           (null-samples (make-list (length amplitudes) 0)))
-        (l (time size output event)
+        (l (time offset size output event)
           (seq-event-state-update event
             (fold-integers size (seq-event-state event)
               (l (sample-index phase)
@@ -124,7 +126,9 @@
                         (sample (generator phase)))
                       (each
                         (l (output a)
-                          (sp-samples-set! output sample-index (* (a (+ time sample-index)) sample)))
+                          (sp-samples-set! output (+ offset sample-index)
+                            (float-sum (sp-samples-ref output (+ offset sample-index))
+                              (* (a (+ time sample-index)) sample))))
                         output amplitudes)
                       phase))))))))
       phase))
@@ -138,16 +142,16 @@
     (let (amplitudes (map sp-path->t-function amplitudes))
       (seq-event-new start end
         (if (and (number? cut-l) (number? cut-h) (number? trn-l) (number? trn-h))
-          (l (t size output event)
+          (l (t offset size output event)
             (apply
               (l (samples state)
                 (each
                   (l (output a)
-                    (sp-samples-each-index
+                    (each-integer size
                       (l (sample-index)
-                        (sp-samples-set! output sample-index
-                          (* (a (+ t sample-index)) (sp-samples-ref samples sample-index))))
-                      output))
+                        (sp-samples-set! output (+ offset sample-index)
+                          (float-sum (sp-samples-ref output (+ offset sample-index))
+                            (* (a (+ t sample-index)) (sp-samples-ref samples sample-index)))))))
                   output amplitudes)
                 (seq-event-state-update event state))
               (sp-windowed-sinc-bp-br (sp-samples-new size (l (a) (noise))) cut-l
@@ -155,7 +159,7 @@
           (let
             ( (cut-l (sp-path->t-function cut-l)) (cut-h (sp-path->t-function cut-h))
               (trn-l (sp-path->t-function trn-l)) (trn-h (sp-path->t-function trn-h)))
-            (l (t size output event)
+            (l (t offset size output event)
               (seq-event-state-update event
                 (fold-integers size (seq-event-state event)
                   (l (sample-index state)
@@ -164,8 +168,9 @@
                         (let (sample (sp-samples-ref samples 0))
                           (each
                             (l (output a)
-                              (sp-samples-set! output sample-index
-                                (* (a (+ t sample-index)) sample)))
+                              (sp-samples-set! output (+ offset sample-index)
+                                (float-sum (sp-samples-ref output (+ offset sample-index))
+                                  (* (a (+ t sample-index)) sample))))
                             output amplitudes)
                           state))
                       (sp-windowed-sinc-bp-br (sp-samples-new 1 (l (a) (noise))) (cut-l t)
@@ -191,7 +196,7 @@
   (define* (seq-event-new start end f #:optional state)
     "procedure integer [integer any] -> seq-event" (pair state (vector start end f)))
 
-  (define (seq-event-list . a)
+  (define (seq-events-new . a)
     "seq-event ... -> seq-events
      create a events list sorted for seq"
     (list-sort-with-accessor < (compose seq-event-data-start seq-event-data) a))
@@ -199,8 +204,8 @@
   (define (seq-event-group start end events) "integer integer seq-events -> seq-event"
     "! todo: concurrency issue"
     (seq-event-new start end
-      (l (t size output event)
-        (seq-event-state-update event (seq t size output (seq-event-state event))))
+      (l (t offset size output event)
+        (seq-event-state-update event (seq t offset size output (seq-event-state event))))
       events))
 
   (define (seq-event-state-update a state) (pair state (tail a)))
@@ -210,16 +215,19 @@
   (define seq-event-data tail)
   (define seq-event-state first)
 
-  (define (seq time size output events)
-    "integer integer (samples:channel ...) seq-events -> seq-events
+  (define* (seq-parallel time offset size output events)
+    "integer integer integer (samples:channel ...) seq-events -> seq-events
      calls one or multiple functions in parallel at predefined times and sums result samples.
-     the returned objects contains the updated events list and can be passed to the next call to seq"
+     write to output after given offset. output samples length must be equal or greater than offset + size.
+     the returned objects contains the updated events list and can be passed to the next call to seq-parallel or seq.
+     seq-parallel can be nested, but unless more cpu cores are available then using seq will be more efficient.
+     events are created with seq-events-new and seq-event-new"
     ; take sorted event objects that have a start/end time and a function that is called with a time offset and an output array.
-    ; each block, filter events that write into the block, allocate arrays for the portions they write, call the events in parallel,
-    ; merge the event blocks into the final output block. return a list of events without finished events.
-    (define (finish results rest-events)
+    ; each block, filter events that write into the block, allocate arrays for the portions they write to, call the events in parallel,
+    ; merge the event blocks into the given output block. return a list of events with finished events removed.
+    (define (merge results rest-events)
       (let loop ((results results) (events null))
-        (if (null? results) (append events rest-events)
+        (if (null? results) (append (reverse events) rest-events)
           (apply
             (l (offset event-output-size event-output event)
               (each
@@ -232,54 +240,80 @@
                 output event-output)
               (loop (tail results) (pair event events)))
             (touch (first results))))))
-    (let ((block-end (+ time size)) (channels (length output)))
+    (let ((time-end (+ time size)) (channels (length output)))
       (let loop ((results null) (rest events))
-        (if (null? rest) (finish results rest)
+        (if (null? rest) (merge results rest)
           (let*
             ( (event (first rest)) (data (seq-event-data event)) (start (seq-event-data-start data))
               (end (seq-event-data-end data)))
-            (if (< block-end start) (finish results rest)
+            (if (< time-end start) (merge results rest)
               (if (> time end) (loop results (tail rest))
                 (loop
                   (pair
                     (future
                       (let*
-                        ( (block-offset (if (> start time) (- start time) 0))
-                          (block-offset-right (if (< end block-end) (- block-end end) 0))
-                          (size (- size block-offset block-offset-right))
-                          (output (map-integers channels (l (n) (sp-samples-new size)))))
-                        (list block-offset size
+                        ( (time-offset (if (> start time) (- start time) 0))
+                          (time-offset-right (if (< end time-end) (- time-end end) 0))
+                          (size (- size time-offset time-offset-right))
+                          (output (sp-block-new channels size)))
+                        (list (+ offset time-offset) size
                           output
-                          ( (seq-event-data-f data) (- (+ time block-offset) start) size
-                            output event))))
+                          ( (seq-event-data-f data) (- (+ time time-offset) start) 0
+                            size output event))))
+                    results)
+                  (tail rest)))))))))
+
+  (define* (seq time offset size output events)
+    "integer integer integer (samples:channel ...) seq-events -> seq-events
+     like seq-parallel but each event is evaluated one after another and writes directly into output"
+    (let ((time-end (+ time size)) (channels (length output)))
+      (let loop ((results null) (rest events))
+        (if (null? rest) (append (reverse results) rest)
+          (let*
+            ( (event (first rest)) (data (seq-event-data event)) (start (seq-event-data-start data))
+              (end (seq-event-data-end data)))
+            (if (< time-end start) (append (reverse results) rest)
+              (if (> time end) (loop results (tail rest))
+                (loop
+                  (pair
+                    (let*
+                      ( (time-offset (if (> start time) (- start time) 0))
+                        (time-offset-right (if (< end time-end) (- time-end end) 0))
+                        (size (- size time-offset time-offset-right)))
+                      ( (seq-event-data-f data) (- (+ time time-offset) start)
+                        (+ offset time-offset) size output event))
                     results)
                   (tail rest)))))))))
 
   (define*
-    (seq-block-series time channels count events f custom #:key (block-size 96000) (progress #f))
+    (seq-block-series time channels count events f custom #:key (block-size 96000) (progress #f)
+      (parallel #t))
     "integer integer integer seq-events procedure:{(samples:channel ...) seq-events custom ... -> (seq-events custom ...)} -> (seq-events custom ...)"
-    (apply sp-fold-integers count
-      (l (block-index events . custom)
-        (if progress
-          (begin
-            (display-line (string-append "processing block " (number->string block-index) "..."))
-            (if (= count (+ 1 block-index)) (display-line "processing finished"))))
-        (let (output (sp-block-new channels block-size))
-          (apply f output (seq time block-size output events) custom)))
-      events custom))
+    (let (seq (if parallel seq-parallel seq))
+      (apply sp-fold-integers count
+        (l (block-index events . custom)
+          (if progress
+            (begin
+              (display-line (string-append "processing block " (number->string block-index) "..."))
+              (if (= count (+ 1 block-index)) (display-line "processing finished"))))
+          (let (output (sp-block-new channels block-size))
+            (apply f output (seq time 0 block-size output events) custom)))
+        events custom)))
 
   (define*
-    (seq-block-series->list time channels count events #:key (block-size 96000) (progress #f))
+    (seq-block-series->list time channels count events #:key (block-size 96000) (progress #f)
+      (parallel #t))
     "-> (events block ...)"
     (seq-block-series time channels
       count events
       (l (output events . result) (pair events (pair output result))) null
-      #:block-size block-size #:progress progress))
+      #:block-size block-size #:progress progress #:parallel parallel))
 
   (define*
     (seq-block-series->file path time channels count events #:key (block-size 96000)
       (sample-rate 96000)
-      (progress #f))
+      (progress #f)
+      (parallel #t))
     "string integer integer seq-events [#:block-size integer #:sample-rate integer] -> seq-events"
     (sp-call-with-output-file path channels
       sample-rate
@@ -287,4 +321,4 @@
         (seq-block-series time channels
           count events
           (l (output events) (sp-file-write file output block-size) (list events)) null
-          #:block-size block-size #:progress progress)))))
+          #:block-size block-size #:progress progress #:parallel parallel)))))

@@ -47,7 +47,7 @@ installed files
 (define file (sp-file-open "/tmp/sp-file.wav" sp-port-mode-write channel-count sample-rate))
 
 ; vector with one sample vector per channel
-(sp-port-write file (vector (f64vector 1 2 3 4)) 4)
+(sp-port-write file (list (f64vector 1 2 3 4)) 4)
 (sp-port-close file)
 ```
 
