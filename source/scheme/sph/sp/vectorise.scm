@@ -80,7 +80,7 @@
   (define (combine-one a b a-change b-change duration-offset count-ratio)
     "receives the same number of bins for the same frequency ranges and combines them.
      this is the function that adds information from higher resolution fft results to lower resolution results"
-    ; the weighting could be improved. the most useful feature is perhaps that it is or can be like an duration-adaptive fft
+    ; the weighting could be improved. the most useful feature is perhaps that it is or can be like an adaptive fft
     (let*
       ( (a-magnitudes (map magnitude a)) (a-imaginary (map imag-part a))
         (a-mean (arithmetic-mean a-magnitudes)) (a-imaginary-mean (arithmetic-mean a-imaginary))

@@ -29,14 +29,13 @@
     sp-wave-event
     sph-sp-synthesis-description)
   (import
-    (ice-9 futures)
     (rnrs exceptions)
     (sph)
+    (sph futures)
     (sph list)
     (sph sp)
     (sph spline-path)
     (sph vector)
-    (system foreign)
     (only (guile)
       compose
       const
@@ -47,8 +46,7 @@
       random:normal
       *random-state*)
     (only (sph number) float-sum)
-    (only (sph other) each-integer)
-    (only (srfi srfi-1) zip))
+    (only (sph other) each-integer))
 
   (define sph-sp-synthesis-description
     "sequencing and sound synthesis with composable sequencer objects.
@@ -310,21 +308,25 @@
       (apply sp-fold-integers count
         (l (block-index events . custom)
           (if progress
-            (begin
-              (display-line (string-append "processing block " (number->string block-index) "..."))
-              (if (= count (+ 1 block-index)) (display-line "processing finished"))))
-          (let (output (sp-block-new channels block-size))
-            (apply f output (seq time 0 block-size output events) custom)))
+            (display-line
+              (string-append "processing block " (number->string (+ 1 block-index)) "...")))
+          (let*
+            ( (output (sp-block-new channels block-size))
+              (result
+                (apply f output (seq (* block-index block-size) 0 block-size output events) custom)))
+            (if progress (if (= count (+ 1 block-index)) (display-line "processing finished")))
+            result))
         events custom)))
 
   (define*
     (seq-block-series->list time channels count events #:key (block-size 96000) (progress #f)
       (parallel #t))
     "-> (events block ...)"
-    (seq-block-series time channels
-      count events
-      (l (output events . result) (pair events (pair output result))) null
-      #:block-size block-size #:progress progress #:parallel parallel))
+    (apply (l (events . blocks) (pair events (reverse blocks)))
+      (seq-block-series time channels
+        count events
+        (l (output events . result) (pair events (pair output result))) null
+        #:block-size block-size #:progress progress #:parallel parallel)))
 
   (define*
     (seq-block-series->file path time channels count events #:key (block-size 96000)

@@ -53,6 +53,7 @@ installed files
 
 # modules
 ## (sph sp)
+basics
 ~~~
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
