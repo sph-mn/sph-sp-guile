@@ -21,8 +21,9 @@
     sp-noise-exponential~
     sp-noise-normal~
     sp-noise-uniform~
-    sp-path-new
-    sp-path-new*
+    sp-path
+    sp-path*
+    sp-path-procedure
     sp-phase
     sp-rectangle
     sp-rectangle~
@@ -107,8 +108,7 @@
      example: (sp-phase 0.0 (/ (* 2 sp-pi) 200) (* 2 sp-pi))"
     (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y)))
 
-  (define*
-    (sp-path-new a #:key (dimension 1) deep mapper randomise repeat reverse scale shift stretch)
+  (define* (sp-path a #:key (dimension 1) deep mapper randomise repeat reverse scale shift stretch)
     "spline-path/spline-path-config/number/point [keys ...] -> spline-path
      create a new path or modify an existing one.
      combines spline-path-new, spline-path-modify and spline-path-constant.
@@ -133,7 +133,7 @@
   (define-syntax-rule (sp-path-new* (options ...) segment ...)
     (sp-path-new (list (quasiquote segment) ...) options ...))
 
-  (define (sp-path->procedure a) (if (procedure? a) a (spline-path->procedure a)))
+  (define (sp-path-procedure a) (if (procedure? a) a (spline-path->procedure (sp-path a))))
 
   (define*
     (sp-wave-event start end amplitudes wavelength #:key (phase 0) (generator sp-sine~)
@@ -145,8 +145,8 @@
     ; advances phase only in sample steps
     (seq-event-new start end
       (let
-        ( (amplitudes (map sp-path->procedure amplitudes))
-          (wavelength (sp-path->procedure wavelength))
+        ( (amplitudes (map sp-path-procedure amplitudes))
+          (wavelength (sp-path-procedure wavelength))
           (null-samples (make-list (length amplitudes) 0)))
         (l (time offset size output event)
           (seq-event-state-update event
@@ -172,7 +172,7 @@
       (reject #f))
     "integer integer (sp-path ...) sp-path sp-path #:noise procedure #:trn-l sp-path #:trn-h sp-path #:reject boolean -> event
      create a band of noise"
-    (let (amplitudes (map sp-path->procedure amplitudes))
+    (let (amplitudes (map sp-path-procedure amplitudes))
       (seq-event-new start end
         (if (and (number? cut-l) (number? cut-h) (number? trn-l) (number? trn-h))
           (l (t offset size output event)
@@ -190,8 +190,8 @@
               (sp-windowed-sinc-bp-br (sp-samples-new size (l (a) (noise))) cut-l
                 cut-h trn-l trn-h reject (seq-event-state event))))
           (let
-            ( (cut-l (sp-path->procedure cut-l)) (cut-h (sp-path->procedure cut-h))
-              (trn-l (sp-path->procedure trn-l)) (trn-h (sp-path->procedure trn-h)))
+            ( (cut-l (sp-path-procedure cut-l)) (cut-h (sp-path-procedure cut-h))
+              (trn-l (sp-path-procedure trn-l)) (trn-h (sp-path-procedure trn-h)))
             (l (t offset size output event)
               (seq-event-state-update event
                 (fold-integers size (seq-event-state event)
