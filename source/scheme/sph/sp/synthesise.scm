@@ -21,11 +21,17 @@
     sp-noise-exponential~
     sp-noise-normal~
     sp-noise-uniform~
-    sp-path
+    sp-path-new
+    sp-path-new*
     sp-phase
+    sp-rectangle
+    sp-rectangle~
     sp-samples-list-add-offsets
+    sp-sawtooth~
     sp-sine~
     sp-square~
+    sp-triangle
+    sp-triangle~
     sp-wave-event
     sph-sp-synthesis-description)
   (import
@@ -50,8 +56,18 @@
 
   (define sph-sp-synthesis-description
     "sequencing and sound synthesis with composable sequencer objects.
-     time is in number of samples.
-     an sp-path is an argument that the sp-path->t-function accepts")
+     time is in number of samples")
+
+  (define (sp-rectangle t width-a width-b min-value max-value)
+    "integer integer number number -> number
+     alternate between min and max value for durations of width-a and width-b"
+    (let (remainder (modulo t (+ width-a width-b))) (if (< remainder width-a) min-value max-value)))
+
+  (define (sp-triangle t a b height)
+    "integer integer number -> number
+     return a value for a triangle wave with center offset a and b left and right respectively"
+    (let (remainder (modulo t (+ a b)))
+      (if (< remainder a) (* remainder (/ height a)) (* (- b (- remainder a)) (/ height b)))))
 
   (define* (sp-noise-uniform~ #:optional (state *random-state*)) (- (* 2 (random:uniform state)) 1))
   (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
@@ -59,7 +75,7 @@
 
   (define* (sp-square~ t #:optional (wavelength 96000))
     "integer integer -> sample
-     center falls between two samples with even wavelengths"
+     center will fall nicely between two samples if the wavelength is even"
     (if (< (modulo (* 2 t) (* 2 wavelength)) wavelength) -1 1))
 
   (define* (sp-sine~ t #:optional (wavelength 96000))
@@ -68,8 +84,19 @@
      if wavelength is divisible by four then maxima are sample aligned"
     (sin (* t (/ (* 2 sp-pi) wavelength))))
 
-  (define (sp-clip~ a) "eventually adjust value to not exceed -1 or 1"
-    (if (< 0 a) (min 1.0 a) (max -1.0 a)))
+  (define (sp-rectangle~ t a b)
+    "integer sample sample -> sample
+     get a value for a repeating rectangular wave at offset t with given side durations a and b"
+    (sp-rectangle t a b -1 1))
+
+  (define* (sp-triangle~ t #:optional (a 48000) (b 48000))
+    "integer:sample-count ... -> real:sample
+     return a sample for a triangular wave with center offsets a left and b right.
+     creates saw waves if either a or b is 0"
+    (- (sp-triangle t a b 2) 1))
+
+  (define* (sp-sawtooth~ t #:optional (wavelength 96000)) (sp-triangle~ t wavelength 0))
+  (define (sp-clip~ a) "limit value to not exceed -1 or 1" (if (< 0 a) (min 1.0 a) (max -1.0 a)))
 
   (define (sp-phase y change phase-size)
     "number number number -> number
@@ -80,24 +107,33 @@
      example: (sp-phase 0.0 (/ (* 2 sp-pi) 200) (* 2 sp-pi))"
     (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y)))
 
-  (define* (sp-path->t-function a #:optional (dimension 1))
-    "sp-path -> procedure:{t -> number/(number ...)}
-     return a procedure that gives point values for time offset values.
-     dimension selects a number from result points.
-     dimension is ignored for procedures and numbers.
-     # input
-     * procedure: will be used as is
-     * number/(number): will be returned for any point on path
-     * (list ...): a (sph spline-path) configuration"
-    (cond
-      ((procedure? a) a)
-      ( (spline-path? a)
-        (let (b (spline-path->procedure a)) (if dimension (l (t) (list-ref (b t) dimension)) b)))
-      ((number? a) (const a))
-      ( (list? a)
-        (if (list? (first a)) (sp-path->t-function (spline-path-new a) dimension)
-          (const (if dimension (list-ref a dimension) a))))
-      (else (raise (q invalid-sp-path)))))
+  (define*
+    (sp-path-new a #:key (dimension 1) deep mapper randomise repeat reverse scale shift stretch)
+    "spline-path/spline-path-config/number/point [keys ...] -> spline-path
+     create a new path or modify an existing one.
+     combines spline-path-new, spline-path-modify and spline-path-constant.
+     if #:dimension is a number then only the point value of that dimension is returned as a single number. the default is one"
+    (let
+      (path
+        (cond
+          ((spline-path? a) a)
+          ((number? a) (spline-path-constant a))
+          ((list? a) (if (every number? a) (apply spline-path-constant a) (spline-path-new a)))))
+      (spline-path-modify path #:deep
+        deep #:randomise
+        randomise #:repeat
+        repeat #:reverse
+        reverse #:scale
+        scale #:shift
+        shift #:stretch
+        stretch #:mapper-add
+        (append (or mapper null)
+          (list (list (q dimension) #f (l (point) (list-ref point dimension))))))))
+
+  (define-syntax-rule (sp-path-new* (options ...) segment ...)
+    (sp-path-new (list (quasiquote segment) ...) options ...))
+
+  (define (sp-path->procedure a) (if (procedure? a) a (spline-path->procedure a)))
 
   (define*
     (sp-wave-event start end amplitudes wavelength #:key (phase 0) (generator sp-sine~)
@@ -109,8 +145,8 @@
     ; advances phase only in sample steps
     (seq-event-new start end
       (let
-        ( (amplitudes (map sp-path->t-function amplitudes))
-          (wavelength (sp-path->t-function wavelength))
+        ( (amplitudes (map sp-path->procedure amplitudes))
+          (wavelength (sp-path->procedure wavelength))
           (null-samples (make-list (length amplitudes) 0)))
         (l (time offset size output event)
           (seq-event-state-update event
@@ -136,7 +172,7 @@
       (reject #f))
     "integer integer (sp-path ...) sp-path sp-path #:noise procedure #:trn-l sp-path #:trn-h sp-path #:reject boolean -> event
      create a band of noise"
-    (let (amplitudes (map sp-path->t-function amplitudes))
+    (let (amplitudes (map sp-path->procedure amplitudes))
       (seq-event-new start end
         (if (and (number? cut-l) (number? cut-h) (number? trn-l) (number? trn-h))
           (l (t offset size output event)
@@ -154,8 +190,8 @@
               (sp-windowed-sinc-bp-br (sp-samples-new size (l (a) (noise))) cut-l
                 cut-h trn-l trn-h reject (seq-event-state event))))
           (let
-            ( (cut-l (sp-path->t-function cut-l)) (cut-h (sp-path->t-function cut-h))
-              (trn-l (sp-path->t-function trn-l)) (trn-h (sp-path->t-function trn-h)))
+            ( (cut-l (sp-path->procedure cut-l)) (cut-h (sp-path->procedure cut-h))
+              (trn-l (sp-path->procedure trn-l)) (trn-h (sp-path->procedure trn-h)))
             (l (t offset size output event)
               (seq-event-state-update event
                 (fold-integers size (seq-event-state event)
