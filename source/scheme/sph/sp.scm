@@ -67,6 +67,7 @@
     sp-samples-map
     sp-samples-map!
     sp-samples-map-with
+    sp-samples-map-with!
     sp-samples-map-with-index
     sp-samples-multiply
     sp-samples-new
@@ -126,6 +127,7 @@
   (define sp-sample-sum float-sum)
   (define sp-samples-map f64vector-map)
   (define sp-samples-map-with f64vector-map-with)
+  (define sp-samples-map-with! f64vector-map-with!)
   (define sp-samples-map-with-index f64vector-map-with-index)
   (define sp-samples-map! f64vector-map!)
   (define sp-samples-each-index f64vector-each-index)

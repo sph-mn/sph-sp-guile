@@ -73,25 +73,40 @@
 (define
   (scm-sp-windowed-sinc-bp-br!
     scm-out
-    scm-in scm-cutoff-l scm-cutoff-h scm-transition-l scm-transition-h scm-is-reject scm-state)
-  (SCM SCM SCM SCM SCM SCM SCM SCM SCM)
+    scm-in
+    scm-cutoff-l
+    scm-cutoff-h scm-transition-l scm-transition-h scm-is-reject scm-state scm-in-start scm-rest)
+  (SCM SCM SCM SCM SCM SCM SCM SCM SCM SCM SCM)
+  "uses a rest argument because c functions for guile are limited to 10 arguments"
   status-declare
   (declare
     state sp-convolution-filter-state-t*
-    is-reject boolean)
+    is-reject boolean
+    in-start sp-sample-count-t
+    in-count sp-sample-count-t
+    out-start sp-sample-count-t)
   (set
     is-reject (scm-is-true scm-is-reject)
     state
     (if* (scm-is-true scm-state) (scm->sp-convolution-filter-state scm-state)
-      0))
+      0)
+    in-start
+    (if* (scm-is-undefined scm-in-start) 0
+      (scm->sp-sample-count scm-in-start))
+    in-count
+    (if* (scm-is-null scm-rest) (- (scm->sp-samples-length scm-in) in-start)
+      (scm->sp-sample-count (scm-first scm-rest)))
+    out-start
+    (if* (or (scm-is-null scm-rest) (scm-is-null (scm-tail scm-rest))) 0
+      (scm->sp-sample-count (scm-first (scm-tail scm-rest)))))
   (status-require
     (sp-windowed-sinc-bp-br
-      (scm->sp-samples scm-in)
-      (scm->sp-samples-length scm-in)
+      (+ in-start (scm->sp-samples scm-in))
+      in-count
       (scm->sp-float scm-cutoff-l)
       (scm->sp-float scm-cutoff-h)
       (scm->sp-float scm-transition-l)
-      (scm->sp-float scm-transition-h) is-reject &state (scm->sp-samples scm-out)))
+      (scm->sp-float scm-transition-h) is-reject &state (+ out-start (scm->sp-samples scm-out))))
   (if (not (scm-is-true scm-state)) (set scm-state (scm-from-sp-convolution-filter-state state)))
   (label exit
     (scm-from-status-return scm-state)))
@@ -424,12 +439,12 @@
   (scm-c-define-procedure-c
     "sp-windowed-sinc-bp-br!"
     8
-    0
-    0
+    1
+    1
     scm-sp-windowed-sinc-bp-br!
-    "out in  cutoff-l cutoff-h transition-l transition-h is-reject state -> state
+    "out in cutoff-l cutoff-h transition-l transition-h is-reject state in-start in-end out-start -> state
     samples samples real:0..0.5 real real:0..0.5 real boolean convolution-filter-state -> unspecified
-  like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter")
+    like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter")
   (scm-c-define-procedure-c
     "sp-windowed-sinc-lp-hp-ir"
     3

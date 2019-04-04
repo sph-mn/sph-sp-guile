@@ -46,13 +46,19 @@ SCM scm_sp_windowed_sinc_lp_hp_x(SCM scm_out, SCM scm_in, SCM scm_cutoff, SCM sc
 exit:
   scm_from_status_return(scm_state);
 };
-SCM scm_sp_windowed_sinc_bp_br_x(SCM scm_out, SCM scm_in, SCM scm_cutoff_l, SCM scm_cutoff_h, SCM scm_transition_l, SCM scm_transition_h, SCM scm_is_reject, SCM scm_state) {
+SCM scm_sp_windowed_sinc_bp_br_x(SCM scm_out, SCM scm_in, SCM scm_cutoff_l, SCM scm_cutoff_h, SCM scm_transition_l, SCM scm_transition_h, SCM scm_is_reject, SCM scm_state, SCM scm_in_start, SCM scm_rest) {
   status_declare;
   sp_convolution_filter_state_t* state;
   boolean is_reject;
+  sp_sample_count_t in_start;
+  sp_sample_count_t in_count;
+  sp_sample_count_t out_start;
   is_reject = scm_is_true(scm_is_reject);
   state = (scm_is_true(scm_state) ? scm_to_sp_convolution_filter_state(scm_state) : 0);
-  status_require((sp_windowed_sinc_bp_br((scm_to_sp_samples(scm_in)), (scm_to_sp_samples_length(scm_in)), (scm_to_sp_float(scm_cutoff_l)), (scm_to_sp_float(scm_cutoff_h)), (scm_to_sp_float(scm_transition_l)), (scm_to_sp_float(scm_transition_h)), is_reject, (&state), (scm_to_sp_samples(scm_out)))));
+  in_start = (scm_is_undefined(scm_in_start) ? 0 : scm_to_sp_sample_count(scm_in_start));
+  in_count = (scm_is_null(scm_rest) ? (scm_to_sp_samples_length(scm_in) - in_start) : scm_to_sp_sample_count((scm_first(scm_rest))));
+  out_start = ((scm_is_null(scm_rest) || scm_is_null((scm_tail(scm_rest)))) ? 0 : scm_to_sp_sample_count((scm_first((scm_tail(scm_rest))))));
+  status_require((sp_windowed_sinc_bp_br((in_start + scm_to_sp_samples(scm_in)), in_count, (scm_to_sp_float(scm_cutoff_l)), (scm_to_sp_float(scm_cutoff_h)), (scm_to_sp_float(scm_transition_l)), (scm_to_sp_float(scm_transition_h)), is_reject, (&state), (out_start + scm_to_sp_samples(scm_out)))));
   if (!scm_is_true(scm_state)) {
     scm_state = scm_from_sp_convolution_filter_state(state);
   };
@@ -285,7 +291,7 @@ void sp_guile_init() {
   scm_c_define_procedure_c("sp-convolve!", 4, 1, 0, scm_sp_convolve_x, ("out a b carryover [carryover-len] -> unspecified"));
   scm_c_define_procedure_c("sp-window-blackman", 2, 0, 0, scm_sp_window_blackman, ("real width -> real"));
   scm_c_define_procedure_c("sp-windowed-sinc-lp-hp!", 6, 0, 0, scm_sp_windowed_sinc_lp_hp_x, ("out in cutoff transition is-high-pass state -> state\n    samples samples real:0..0.5 real:0..0.5 boolean convolution-filter-state -> unspecified\n    apply a windowed-sinc low-pass or high-pass filter to \"in\", write to \"out\" and return\n    an updated state object.\n    if state object is false, create a new state.\n    cutoff and transition are as a fraction of the sampling-rate"));
-  scm_c_define_procedure_c("sp-windowed-sinc-bp-br!", 8, 0, 0, scm_sp_windowed_sinc_bp_br_x, ("out in  cutoff-l cutoff-h transition-l transition-h is-reject state -> state\n    samples samples real:0..0.5 real real:0..0.5 real boolean convolution-filter-state -> unspecified\n  like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter"));
+  scm_c_define_procedure_c("sp-windowed-sinc-bp-br!", 8, 1, 1, scm_sp_windowed_sinc_bp_br_x, ("out in cutoff-l cutoff-h transition-l transition-h is-reject state in-start in-end out-start -> state\n    samples samples real:0..0.5 real real:0..0.5 real boolean convolution-filter-state -> unspecified\n    like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter"));
   scm_c_define_procedure_c("sp-windowed-sinc-lp-hp-ir", 3, 0, 0, scm_sp_windowed_sinc_lp_hp_ir, ("real real boolean -> samples\n    cutoff transition is-high-pass -> ir\n    get an impulse response kernel for a low-pass or high-pass filter"));
   scm_c_define_procedure_c("sp-windowed-sinc-bp-br-ir", 5, 0, 0, scm_sp_windowed_sinc_bp_br_ir, ("real real real real boolean -> samples\n    cutoff-l cutoff-h transition-l transition-h is-reject -> ir\n    get an impulse response kernel for a band-pass or band-reject filter"));
   scm_c_define_procedure_c("sp-convolution-filter!", 5, 0, 0, scm_sp_convolution_filter_x, ("out in ir-f ir-f-arguments state -> state\n     samples samples procedure list false/sp-convolution-filter-state -> sp-convolution-filter-state\n     if state is false then a new state object will be returned"));

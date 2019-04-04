@@ -9,6 +9,7 @@
     seq-event-data-f
     seq-event-data-start
     seq-event-group
+    seq-event-group-map
     seq-event-new
     seq-event-state
     seq-event-state-update
@@ -52,8 +53,9 @@
       random:uniform
       random:normal
       *random-state*)
+    (only (rnrs base) set!)
     (only (sph number) float-sum)
-    (only (sph other) each-integer))
+    (only (sph other) each-integer procedure->cached-procedure))
 
   (define sph-sp-synthesis-description
     "sequencing and sound synthesis with composable sequencer objects.
@@ -166,48 +168,95 @@
                       phase))))))))
       phase))
 
+  (define (limit-t a step-size) (let (diff (modulo a step-size)) (if (zero? diff) a (- a diff))))
+
+  (define (get-noise-f repeat-noise noise start end)
+    (if repeat-noise
+      (let (samples (sp-samples-new (min 96000 (- end start)) (l a (noise))))
+        (l (size) "optimisation where the same noise samples keep being used as filter input"
+          (if (> size (sp-samples-length samples))
+            (set! samples (sp-samples-new size (l a (noise)))))
+          samples))
+      (l (size) (sp-samples-new size (l a (noise))))))
+
   (define*
-    (sp-band-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~) (trn-l 0.01)
-      (trn-h 0.01)
-      (reject #f))
-    "integer integer (sp-path ...) sp-path sp-path #:noise procedure #:trn-l sp-path #:trn-h sp-path #:reject boolean -> event
-     create a band of noise"
-    (let (amplitudes (map sp-path-procedure amplitudes))
+    (sp-band-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~) (trn-l 0.07)
+      (trn-h 0.07)
+      reject
+      (resolution 96)
+      repeat-noise)
+    "integer integer (sp-path ...) sp-path sp-path [keys ...] -> seq-event
+     create a band of noise filtered by a windowed sinc filter.
+     if repeat-noise is true, source noise samples are reused and not regenerated.
+     # keys
+     noise: procedure:{-> sample}
+     trn-l: sp-path
+     trn-h: sp-path
+     reject: boolean
+     repeat-noise: boolean
+     resolution: integer"
+    (let
+      ( (amplitudes (map sp-path-procedure amplitudes)) (cut-l (sp-path-procedure cut-l))
+        (cut-h (sp-path-procedure cut-h)) (trn-l (sp-path-procedure trn-l))
+        (trn-h (sp-path-procedure trn-h)) (get-noise (get-noise-f repeat-noise noise start end)))
       (seq-event-new start end
-        (if (and (number? cut-l) (number? cut-h) (number? trn-l) (number? trn-h))
-          (l (t offset size output event)
-            (apply
-              (l (samples state)
-                (each
-                  (l (output a)
-                    (each-integer size
-                      (l (sample-index)
-                        (sp-samples-set! output (+ offset sample-index)
-                          (float-sum (sp-samples-ref output (+ offset sample-index))
-                            (* (a (+ t sample-index)) (sp-samples-ref samples sample-index)))))))
-                  output amplitudes)
-                (seq-event-state-update event state))
-              (sp-windowed-sinc-bp-br (sp-samples-new size (l (a) (noise))) cut-l
-                cut-h trn-l trn-h reject (seq-event-state event))))
-          (let
-            ( (cut-l (sp-path-procedure cut-l)) (cut-h (sp-path-procedure cut-h))
-              (trn-l (sp-path-procedure trn-l)) (trn-h (sp-path-procedure trn-h)))
-            (l (t offset size output event)
-              (seq-event-state-update event
-                (fold-integers size (seq-event-state event)
-                  (l (sample-index state)
-                    (apply
-                      (l (samples state)
-                        (let (sample (sp-samples-ref samples 0))
-                          (each
-                            (l (output a)
-                              (sp-samples-set! output (+ offset sample-index)
-                                (float-sum (sp-samples-ref output (+ offset sample-index))
-                                  (* (a (+ t sample-index)) sample))))
-                            output amplitudes)
-                          state))
-                      (sp-windowed-sinc-bp-br (sp-samples-new 1 (l (a) (noise))) (cut-l t)
-                        (cut-h t) (trn-l t) (trn-h t) reject state))))))))
+        (l (t offset size output event)
+          (let*
+            ( (count (ceiling (/ size resolution))) (samples (sp-samples-new (* resolution count)))
+              (noise-samples (get-noise (* resolution count)))
+              (filter-state
+                (fold-integers count (seq-event-state event)
+                  (l (block-index filter-state)
+                    (let* ((block-offset (* resolution block-index)) (t (+ t block-offset)))
+                      (sp-windowed-sinc-bp-br! samples noise-samples
+                        (cut-l t) (cut-h t)
+                        (trn-l t) (trn-h t) reject filter-state block-offset resolution block-offset))))))
+            (each
+              (l (output a) "apply amplitudes and sum into output"
+                (each-integer size
+                  (l (index)
+                    (sp-samples-set! output (+ offset index)
+                      (float-sum (sp-samples-ref output (+ offset index))
+                        (* (a (+ t index)) (sp-samples-ref samples index)))))))
+              output amplitudes)
+            (seq-event-state-update event filter-state)))
+        #f)))
+
+  #;(define*
+    (sp-low-pass-event start end amplitudes amount #:key (noise sp-noise-uniform~) (resolution 96)
+      repeat-noise)
+    "integer integer (sp-path ...) sp-path [keys ...] -> seq-event
+     create a band of noise filtered by a centered moving average filter.
+     amount gives the radius of the moving average.
+     if repeat-noise is true, source noise samples are reused and not regenerated.
+     # keys
+     noise: procedure:{-> sample}
+     repeat-noise: boolean
+     resolution: integer"
+    (let
+      ( (amplitudes (map sp-path-procedure amplitudes)) (amount (sp-path-procedure cut-h))
+        (get-noise (get-noise-f repeat-noise noise)))
+      (seq-event-new start end
+        (l (t offset size output event)
+          (let*
+            ( (count (ceiling (/ size resolution))) (samples (sp-samples-new (* resolution count)))
+              (noise-samples (get-noise (* resolution count)))
+              (filter-state
+                (fold-integers count (seq-event-state event)
+                  (l (block-index filter-state)
+                    (let* ((block-offset (* resolution block-index)) (t (+ t block-offset)))
+                      (sp-windowed-sinc-bp-br! samples noise-samples
+                        (cut-l t) (cut-h t)
+                        (trn-l t) (trn-h t) reject filter-state block-offset resolution block-offset))))))
+            (each
+              (l (output a) "apply amplitudes and sum into output"
+                (each-integer size
+                  (l (index)
+                    (sp-samples-set! output (+ offset index)
+                      (float-sum (sp-samples-ref output (+ offset index))
+                        (* (a (+ t index)) (sp-samples-ref samples index)))))))
+              output amplitudes)
+            (seq-event-state-update event filter-state)))
         #f)))
 
   (define (sp-blocks->file a path channels sample-rate size)
@@ -235,13 +284,45 @@
     (list-sort-with-accessor < (compose seq-event-data-start seq-event-data) a))
 
   (define (seq-event-group start end events) "integer integer seq-events -> seq-event"
-    "! todo: concurrency issue"
     (seq-event-new start end
       (l (t offset size output event)
         (seq-event-state-update event (seq t offset size output (seq-event-state event))))
       events))
 
-  (define (seq-event-state-update a state) (pair state (tail a)))
+  (define (seq-event-group-map start end f events . custom)
+    "integer integer procedure:{(samples ...) -> unspecified} seq-events -> seq-event
+     evaluate events with seq and write the results into a temporary block which is passed to f
+     for further processing"
+    (let*
+      ( (eval-events
+          (identity
+            ;procedure->cached-procedure
+            (l (t size channels events custom c)
+              (let*
+                ( (event-output (sp-block-new channels size))
+                  (events (seq t 0 size event-output events)))
+                (c event-output events (apply f size event-output custom))))
+            (l (t size . a) (pair t size)))))
+      (seq-event-new start end
+        (l (t offset size output event)
+          (let (state (seq-event-state event))
+            (eval-events t size
+              (length output) (first state)
+              (tail state)
+              (l (event-output events custom)
+                (each
+                  (l (a b)
+                    (each-integer size
+                      (l (index)
+                        (sp-samples-set! a (+ offset index)
+                          (float-sum (sp-samples-ref a (+ offset index)) (sp-samples-ref b index))))))
+                  output event-output)
+                (seq-event-state-update event (pair events custom))))))
+        (pair events custom))))
+
+  (define (seq-event-state-update a state) "return a new event with the state updated"
+    (pair state (tail a)))
+
   (define seq-event-data-start (vector-accessor 0))
   (define seq-event-data-end (vector-accessor 1))
   (define seq-event-data-f (vector-accessor 2))
