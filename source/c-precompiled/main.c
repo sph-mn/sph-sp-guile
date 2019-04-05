@@ -46,6 +46,7 @@ SCM scm_sp_windowed_sinc_lp_hp_x(SCM scm_out, SCM scm_in, SCM scm_cutoff, SCM sc
 exit:
   scm_from_status_return(scm_state);
 };
+/** uses a rest argument because c functions for guile are limited to 10 arguments */
 SCM scm_sp_windowed_sinc_bp_br_x(SCM scm_out, SCM scm_in, SCM scm_cutoff_l, SCM scm_cutoff_h, SCM scm_transition_l, SCM scm_transition_h, SCM scm_is_reject, SCM scm_state, SCM scm_in_start, SCM scm_rest) {
   status_declare;
   sp_convolution_filter_state_t* state;
@@ -120,33 +121,37 @@ exit:
   scm_from_status_return(scm_state);
 };
 /** start/end are indexes counted from 0 */
-SCM scm_sp_moving_average_x(SCM scm_result, SCM scm_source, SCM scm_prev, SCM scm_next, SCM scm_radius, SCM scm_start, SCM scm_end) {
+SCM scm_sp_moving_average_x(SCM scm_out, SCM scm_in, SCM scm_prev, SCM scm_next, SCM scm_radius, SCM scm_in_start, SCM scm_in_count, SCM scm_out_start) {
   status_declare;
-  sp_sample_count_t source_len;
-  sp_sample_count_t prev_len;
-  sp_sample_count_t next_len;
+  sp_sample_t* in;
+  sp_sample_t* in_end;
   sp_sample_t* prev;
+  sp_sample_t* prev_end;
   sp_sample_t* next;
-  sp_sample_count_t start;
-  sp_sample_count_t end;
-  source_len = scm_to_sp_samples_length(scm_source);
-  start = ((!scm_is_undefined(scm_start) && scm_is_true(scm_start)) ? scm_to_sp_sample_count(scm_start) : 0);
-  end = ((!scm_is_undefined(scm_end) && scm_is_true(scm_end)) ? scm_to_sp_sample_count(scm_end) : (source_len - 1));
+  sp_sample_t* next_end;
+  sp_sample_count_t in_start;
+  sp_sample_count_t in_count;
+  sp_sample_count_t out_start;
+  in = scm_to_sp_samples(scm_in);
+  in_end = (scm_to_sp_samples_length(scm_in) + in);
+  in_start = (scm_is_undefined(scm_in_start) ? 0 : scm_to_sp_sample_count(scm_in_start));
+  in_count = (scm_is_undefined(scm_in_count) ? (in_end - in - in_start) : scm_to_sp_sample_count(scm_in_count));
+  out_start = (scm_is_undefined(scm_out_start) ? 0 : scm_to_sp_sample_count(scm_out_start));
   if (scm_is_true(scm_prev)) {
     prev = scm_to_sp_samples(scm_prev);
-    prev_len = scm_to_sp_samples_length(scm_prev);
+    prev_end = (scm_to_sp_samples_length(scm_prev) + prev);
   } else {
     prev = 0;
-    prev_len = 0;
+    prev_end = 0;
   };
   if (scm_is_true(scm_next)) {
     next = scm_to_sp_samples(scm_next);
-    next_len = scm_to_sp_samples_length(scm_next);
+    next_end = (scm_to_sp_samples_length(scm_next) + next);
   } else {
     next = 0;
-    next_len = 0;
+    next_end = 0;
   };
-  status_require((sp_moving_average((scm_to_sp_samples(scm_source)), source_len, prev, prev_len, next, next_len, (scm_to_sp_sample_count(scm_radius)), start, end, (scm_to_sp_samples(scm_result)))));
+  status_require((sp_moving_average(in, in_end, (in_start + in), ((in_start + in_count) + in), prev, prev_end, next, next_end, (scm_to_sp_sample_count(scm_radius)), (out_start + scm_to_sp_samples(scm_out)))));
 exit:
   scm_from_status_return(SCM_UNSPECIFIED);
 };
@@ -295,7 +300,7 @@ void sp_guile_init() {
   scm_c_define_procedure_c("sp-windowed-sinc-lp-hp-ir", 3, 0, 0, scm_sp_windowed_sinc_lp_hp_ir, ("real real boolean -> samples\n    cutoff transition is-high-pass -> ir\n    get an impulse response kernel for a low-pass or high-pass filter"));
   scm_c_define_procedure_c("sp-windowed-sinc-bp-br-ir", 5, 0, 0, scm_sp_windowed_sinc_bp_br_ir, ("real real real real boolean -> samples\n    cutoff-l cutoff-h transition-l transition-h is-reject -> ir\n    get an impulse response kernel for a band-pass or band-reject filter"));
   scm_c_define_procedure_c("sp-convolution-filter!", 5, 0, 0, scm_sp_convolution_filter_x, ("out in ir-f ir-f-arguments state -> state\n     samples samples procedure list false/sp-convolution-filter-state -> sp-convolution-filter-state\n     if state is false then a new state object will be returned"));
-  scm_c_define_procedure_c("sp-moving-average!", 5, 2, 0, scm_sp_moving_average_x, ("result source previous next radius [start end] -> unspecified\n    sample-vector sample-vector sample-vector sample-vector integer integer integer [integer]"));
+  scm_c_define_procedure_c("sp-moving-average!", 5, 3, 0, scm_sp_moving_average_x, ("out in previous next radius [in-start in-count out-start] -> unspecified\n     samples samples samples samples integer [integer integer integer] -> unspecified"));
   scm_c_define_procedure_c("sp-fft", 1, 0, 0, scm_sp_fft, ("#(complex ...) -> #(complex ...)"));
   scm_c_define_procedure_c("sp-ffti", 1, 0, 0, scm_sp_ffti, ("#(complex ...) -> #(complex ...)\n    inverse discrete fourier transform"));
   scm_c_define_procedure_c("sp-file-open", 2, 2, 0, scm_sp_file_open, ("path mode [channel-count sample-rate] -> sp-file"));

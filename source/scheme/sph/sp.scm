@@ -207,10 +207,12 @@
      fold over integers from 0 to count minus 1 with zero or more custom state variables"
     (let loop ((a 0) (b init)) (if (< a count) (loop (+ 1 a) (apply f a b)) b)))
 
-  (define* (sp-moving-average source prev next distance #:optional start end)
+  (define* (sp-moving-average in prev next radius #:optional in-start in-count out-start)
     "samples false/samples false/samples integer [integer/false integer/false] -> samples"
-    (sp-samples-copy-zero* source
-      (l (a) (sp-moving-average! a source prev next distance start end))))
+    (sp-samples-copy-zero* in
+      (l (out)
+        (sp-moving-average! out in
+          prev next radius (or in-start 0) (or in-count (sp-samples-length in)) (or out-start 0)))))
 
   (define* (sp-convolve a b #:optional carryover carryover-len)
     (let

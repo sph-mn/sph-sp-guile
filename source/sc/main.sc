@@ -190,48 +190,56 @@
     (scm-from-status-return scm-state)))
 
 (define
-  (scm-sp-moving-average! scm-result scm-source scm-prev scm-next scm-radius scm-start scm-end)
-  (SCM SCM SCM SCM SCM SCM SCM SCM)
+  (scm-sp-moving-average!
+    scm-out scm-in scm-prev scm-next scm-radius scm-in-start scm-in-count scm-out-start)
+  (SCM SCM SCM SCM SCM SCM SCM SCM SCM)
   "start/end are indexes counted from 0"
   status-declare
   (declare
-    source-len sp-sample-count-t
-    prev-len sp-sample-count-t
-    next-len sp-sample-count-t
+    in sp-sample-t*
+    in-end sp-sample-t*
     prev sp-sample-t*
+    prev-end sp-sample-t*
     next sp-sample-t*
-    start sp-sample-count-t
-    end sp-sample-count-t)
+    next-end sp-sample-t*
+    in-start sp-sample-count-t
+    in-count sp-sample-count-t
+    out-start sp-sample-count-t)
   (set
-    source-len (scm->sp-samples-length scm-source)
-    start
-    (if* (and (not (scm-is-undefined scm-start)) (scm-is-true scm-start))
-      (scm->sp-sample-count scm-start)
-      0)
-    end
-    (if* (and (not (scm-is-undefined scm-end)) (scm-is-true scm-end))
-      (scm->sp-sample-count scm-end)
-      (- source-len 1)))
+    in (scm->sp-samples scm-in)
+    in-end (+ (scm->sp-samples-length scm-in) in)
+    in-start
+    (if* (scm-is-undefined scm-in-start) 0
+      (scm->sp-sample-count scm-in-start))
+    in-count
+    (if* (scm-is-undefined scm-in-count) (- in-end in in-start)
+      (scm->sp-sample-count scm-in-count))
+    out-start
+    (if* (scm-is-undefined scm-out-start) 0
+      (scm->sp-sample-count scm-out-start)))
   (if (scm-is-true scm-prev)
     (set
       prev (scm->sp-samples scm-prev)
-      prev-len (scm->sp-samples-length scm-prev))
+      prev-end (+ (scm->sp-samples-length scm-prev) prev))
     (set
       prev 0
-      prev-len 0))
+      prev-end 0))
   (if (scm-is-true scm-next)
     (set
       next (scm->sp-samples scm-next)
-      next-len (scm->sp-samples-length scm-next))
+      next-end (+ (scm->sp-samples-length scm-next) next))
     (set
       next 0
-      next-len 0))
+      next-end 0))
   (status-require
     (sp-moving-average
-      (scm->sp-samples scm-source)
-      source-len
+      in
+      in-end
+      (+ in-start in)
+      (+ (+ in-start in-count) in)
       prev
-      prev-len next next-len (scm->sp-sample-count scm-radius) start end (scm->sp-samples scm-result)))
+      prev-end
+      next next-end (scm->sp-sample-count scm-radius) (+ out-start (scm->sp-samples scm-out))))
   (label exit
     (scm-from-status-return SCM-UNSPECIFIED)))
 
@@ -475,11 +483,11 @@
   (scm-c-define-procedure-c
     "sp-moving-average!"
     5
-    2
+    3
     0
     scm-sp-moving-average!
-    "result source previous next radius [start end] -> unspecified
-    sample-vector sample-vector sample-vector sample-vector integer integer integer [integer]")
+    "out in previous next radius [in-start in-count out-start] -> unspecified
+     samples samples samples samples integer [integer integer integer] -> unspecified")
   (scm-c-define-procedure-c "sp-fft" 1 0 0 scm-sp-fft "#(complex ...) -> #(complex ...)")
   (scm-c-define-procedure-c
     "sp-ffti"

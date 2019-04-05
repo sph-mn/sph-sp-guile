@@ -180,8 +180,8 @@
       (l (size) (sp-samples-new size (l a (noise))))))
 
   (define*
-    (sp-band-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~) (trn-l 0.07)
-      (trn-h 0.07)
+    (sp-band-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~) (trn-l 0.01)
+      (trn-h 0.01)
       reject
       (resolution 96)
       repeat-noise)
@@ -222,7 +222,7 @@
             (seq-event-state-update event filter-state)))
         #f)))
 
-  #;(define*
+  (define*
     (sp-low-pass-event start end amplitudes amount #:key (noise sp-noise-uniform~) (resolution 96)
       repeat-noise)
     "integer integer (sp-path ...) sp-path [keys ...] -> seq-event
@@ -295,8 +295,7 @@
      for further processing"
     (let*
       ( (eval-events
-          (identity
-            ;procedure->cached-procedure
+          (procedure->cached-procedure
             (l (t size channels events custom c)
               (let*
                 ( (event-output (sp-block-new channels size))
