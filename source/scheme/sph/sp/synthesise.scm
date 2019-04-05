@@ -19,6 +19,7 @@
     sp-band-partials
     sp-blocks->file
     sp-clip~
+    sp-low-pass-event
     sp-noise-exponential~
     sp-noise-normal~
     sp-noise-uniform~
@@ -223,7 +224,7 @@
         #f)))
 
   (define*
-    (sp-low-pass-event start end amplitudes amount #:key (noise sp-noise-uniform~) (resolution 96)
+    (sp-low-pass-event start end amplitudes radius #:key (noise sp-noise-uniform~) (resolution 96)
       repeat-noise)
     "integer integer (sp-path ...) sp-path [keys ...] -> seq-event
      create a band of noise filtered by a centered moving average filter.
@@ -234,8 +235,8 @@
      repeat-noise: boolean
      resolution: integer"
     (let
-      ( (amplitudes (map sp-path-procedure amplitudes)) (amount (sp-path-procedure cut-h))
-        (get-noise (get-noise-f repeat-noise noise)))
+      ( (amplitudes (map sp-path-procedure amplitudes)) (radius (sp-path-procedure radius))
+        (get-noise (get-noise-f repeat-noise noise start end)))
       (seq-event-new start end
         (l (t offset size output event)
           (let*
@@ -245,9 +246,10 @@
                 (fold-integers count (seq-event-state event)
                   (l (block-index filter-state)
                     (let* ((block-offset (* resolution block-index)) (t (+ t block-offset)))
-                      (sp-windowed-sinc-bp-br! samples noise-samples
-                        (cut-l t) (cut-h t)
-                        (trn-l t) (trn-h t) reject filter-state block-offset resolution block-offset))))))
+                      (sp-moving-average! samples noise-samples
+                        noise-samples noise-samples
+                        (round (radius t)) block-offset resolution block-offset)
+                      #f)))))
             (each
               (l (output a) "apply amplitudes and sum into output"
                 (each-integer size
