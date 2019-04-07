@@ -17,6 +17,7 @@
     seq-parallel
     sp-band-event
     sp-band-partials
+    sp-block->file
     sp-blocks->file
     sp-clip~
     sp-low-pass-event
@@ -261,11 +262,16 @@
             (seq-event-state-update event filter-state)))
         #f)))
 
-  (define (sp-blocks->file a path channels sample-rate size)
-    "((samples:channel ...):block ...) string integer integer integer -> unspecified"
+  (define* (sp-block->file a path sample-rate #:optional channels)
+    "(samples:channel ...):block string integer [integer] -> unspecified"
+    (sp-blocks->file (list a) path sample-rate channels))
+
+  (define* (sp-blocks->file a path sample-rate #:optional channels)
+    "((samples:channel ...):block ...) string integer [integer] -> unspecified"
     (if (not (null? a))
-      (sp-call-with-output-file path channels
-        sample-rate (l (file) (each (l (a) (sp-file-write file a size)) a)))))
+      (sp-call-with-output-file path (or channels (length (first a)))
+        sample-rate
+        (l (file) (each (l (block) (sp-file-write file block (sp-samples-length (first block)))) a)))))
 
   (define* (sp-samples-list-add-offsets b #:optional (start 0))
     "(samples ...) [integer] -> ((sample-offset samples) ...)

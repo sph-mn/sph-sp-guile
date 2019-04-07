@@ -452,7 +452,9 @@
     scm-sp-windowed-sinc-bp-br!
     "out in cutoff-l cutoff-h transition-l transition-h is-reject state in-start in-end out-start -> state
     samples samples real:0..0.5 real real:0..0.5 real boolean convolution-filter-state -> unspecified
-    like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter")
+    like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter.
+    if state is false then a new state object will be returned.
+    optimised to become a low-pass or high-pass at the ends")
   (scm-c-define-procedure-c
     "sp-windowed-sinc-lp-hp-ir"
     3

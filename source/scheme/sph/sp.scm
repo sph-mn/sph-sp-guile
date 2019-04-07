@@ -11,6 +11,8 @@
     sp-block-overlap
     sp-call-with-output-file
     sp-change-limiter
+    sp-cheap-high-pass!
+    sp-cheap-high-pass-one!
     sp-convolution-filter!
     sp-convolve
     sp-convolve!
@@ -52,6 +54,7 @@
     sp-plot-spectrum-display-file
     sp-sample-sum
     sp-samples->list
+    sp-samples-absolute-max
     sp-samples-apply-blackman-window
     sp-samples-apply-hann-window
     sp-samples-copy
@@ -76,6 +79,7 @@
     sp-samples-set!
     sp-samples-split
     sp-samples-threshold
+    sp-samples-zero!
     sp-samples?
     sp-scheduler
     sp-sinc
@@ -106,10 +110,10 @@
       system*
       tmpnam)
     (only (rnrs sorting) list-sort)
-    (only (sph list) map-integers)
+    (only (sph list) fold-integers map-integers)
     (only (sph math) absolute-threshold differences)
     (only (sph number) float-sum)
-    (only (sph other) each-integer)
+    (only (sph other) begin-first each-integer)
     (only (sph vector) vector-each vector-first)
     (only (srfi srfi-1) drop-right))
 
@@ -140,6 +144,7 @@
   (define sp-samples-copy-zero* f64vector-copy-zero*)
   (define sp-samples-length f64vector-length)
   (define sp-samples-copy f64vector-copy)
+  (define sp-samples-range-map! f64vector-range-map!)
   (define (sp-samples-divide a divisor) (sp-samples-map (l (b) (if (zero? b) b (/ b divisor))) a))
   (define (sp-samples-multiply a factor) (sp-samples-map (l (b) (* b factor)) a))
   (define (sp-block-new channels size) (map-integers channels (l (n) (sp-samples-new size))))
@@ -468,4 +473,114 @@
             ( (average-change (/ (abs (apply + (differences previous))) (- (length previous) 1)))
               (max-change (* max-factor average-change)))
             (max (min (+ max-change (first previous)) current) (- (first previous) max-change)))))
-      current-value width state)))
+      current-value width state))
+
+  (define (sp-samples-zero! a)
+    "samples -> samples
+     set all values in sample array to zero and return it"
+    (sp-samples-each-index (l (index) (sp-samples-set! a index 0)) a) a)
+
+  (define* (sp-samples-absolute-max in #:optional (in-start 0) (in-count (sp-samples-length in)))
+    "samples [integer integer] -> sample
+     get the maximum value in samples array, disregarding sign"
+    (fold-integers in-count 0
+      (l (index result)
+        (let (a (abs (sp-samples-ref in (+ in-start index)))) (if (> a result) a result)))))
+
+  (define (sp-cheap-high-pass-one! out in alpha in-start in-count out-start prev-in prev-out)
+    "samples samples real integer integer integer sample sample -> unspecified
+     calculate one pass for sp-cheap-high-pass and write to out.
+     previous-in/out are needed to make output seamless"
+    ; the first value depends on the previous value
+    (sp-samples-set! out out-start
+      (* alpha (float-sum prev-out (sp-samples-ref in in-start) (- prev-in))))
+    (each-integer (- in-count 1)
+      (l (index)
+        (let ((out-index (+ out-start index)) (in-index (+ in-start index)))
+          (sp-samples-set! out out-index
+            (* alpha
+              (float-sum (sp-samples-ref out (- out-index 1)) (sp-samples-ref in in-index)
+                (- (sp-samples-ref in (- in-index 1))))))))
+      1))
+
+  (define*
+    (sp-cheap-high-pass! out in cutoff passes state #:key (in-start 0)
+      (in-count (sp-samples-length in))
+      (out-start 0)
+      (unity-gain #t))
+    "samples samples real pair [integer integer integer integer] -> samples
+     a fast high-pass filter with a long transition band defined by
+       y[i] := (1 - cutoff) * (y[i-1] + x[i] - x[i-1])
+     cutoff is between 0 and 1 inclusively. cutoff values of 0 and 1 will lead to passthrough or zero output respectively"
+    ; see sp-cheap-high-pass-one! for the core procedure.
+    ; extra features: passhtrough/null on cutoff 0/1, unity gain, seamlessness between calls and between pass count changes.
+    ; the last input/output values per pass are kept in state.
+    (define (set-unity-gain out in in-start in-count out-start)
+      (let*
+        ( (difference
+            (/ (sp-samples-absolute-max out out-start in-count)
+              (sp-samples-absolute-max in in-start in-count)))
+          (correction (float-sum 1 (/ (- 1 difference) difference))))
+        (if (not (zero? difference))
+          (each-integer in-count
+            (l (index)
+              (sp-samples-set! out (+ out-start index)
+                (* correction (sp-samples-ref out (+ out-start index)))))))))
+    (define (optional-state state in in-start in-count)
+      "return state or new state assuming no change compared to current first value"
+      (or state (list (pair (sp-samples-ref in in-start) 0))))
+    (define (get-last samples offset length) (sp-samples-ref samples (+ offset (- length 1))))
+    (define (prev-next a in out in-start out-start)
+      "if there is no previous data for the current pass then take from current data"
+      (let (rest (tail a))
+        (if (null? rest)
+          (pair (pair (sp-samples-ref in in-start) (sp-samples-ref out out-start)) rest) rest)))
+    (cond
+      ( (= 0 cutoff)
+        (each-integer in-count
+          (l (index)
+            (sp-samples-set! out (+ out-start index) (sp-samples-ref in (+ in-start index))))))
+      ((= 1 cutoff) (each-integer in-count (l (index) (sp-samples-set! out (+ out-start index) 0))))
+      ( (= 1 passes)
+        (let (prev (first (optional-state state in in-start in-count)))
+          (sp-cheap-high-pass-one! out in
+            (- 1 cutoff) in-start in-count out-start (first prev) (tail prev)))
+        (begin-first
+          (list (pair (get-last in in-start in-count) (get-last out out-start in-count)))
+          (if unity-gain (set-unity-gain out in in-start in-count out-start))))
+      (else
+        (let*
+          ( (alpha (- 1 cutoff)) (prev (optional-state state in in-start in-count))
+            (in-temp
+              (let (a (sp-samples-new in-count))
+                ; first pass
+                (sp-cheap-high-pass-one! a in
+                  alpha in-start in-count 0 (first (first prev)) (tail (first prev)))
+                a))
+            (prev-rest (prev-next prev in in-temp in-start 0))
+            (result-prev
+              (list (pair (get-last in in-start in-count) (get-last in-temp 0 in-count)))))
+          (let loop
+            ( (passes (- passes 1)) (in-temp in-temp) (out-temp (sp-samples-new in-count))
+              (prev-rest prev-rest) (prev (first prev-rest)) (result-prev result-prev))
+            (if (< 1 passes)
+              (begin
+                ; more than one pass left
+                (sp-cheap-high-pass-one! out-temp in-temp
+                  alpha 0 in-count 0 (first prev) (tail prev))
+                (let
+                  ( (prev-rest (prev-next prev-rest in-temp out-temp 0 0))
+                    (result-prev
+                      (pair (pair (get-last in-temp 0 in-count) (get-last out-temp 0 in-count))
+                        result-prev)))
+                  (loop (- passes 1) out-temp
+                    (sp-samples-zero! in-temp) prev-rest (first prev-rest) result-prev)))
+              (begin
+                ; last pass
+                (sp-cheap-high-pass-one! out in-temp
+                  alpha 0 in-count out-start (first prev) (tail prev))
+                (begin-first
+                  (reverse
+                    (pair (pair (get-last in-temp 0 in-count) (get-last out out-start in-count))
+                      result-prev))
+                  (if unity-gain (set-unity-gain out in in-start in-count out-start)))))))))))
