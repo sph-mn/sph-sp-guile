@@ -20,7 +20,6 @@
     sp-block->file
     sp-blocks->file
     sp-clip~
-    sp-low-pass-event
     sp-noise-exponential~
     sp-noise-normal~
     sp-noise-uniform~
@@ -224,7 +223,7 @@
             (seq-event-state-update event filter-state)))
         #f)))
 
-  (define*
+  #;(define*
     (sp-low-pass-event start end amplitudes radius #:key (noise sp-noise-uniform~) (resolution 96)
       repeat-noise)
     "integer integer (sp-path ...) sp-path [keys ...] -> seq-event
