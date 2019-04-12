@@ -15,11 +15,11 @@
     seq-event-state-update
     seq-events-new
     seq-parallel
-    sp-band-event
-    sp-band-partials
     sp-block->file
     sp-blocks->file
+    sp-cheap-noise-event
     sp-clip~
+    sp-noise-event
     sp-noise-exponential~
     sp-noise-normal~
     sp-noise-uniform~
@@ -43,6 +43,7 @@
     (sph futures)
     (sph list)
     (sph sp)
+    (sph sp filter)
     (sph spline-path)
     (sph vector)
     (only (guile)
@@ -181,21 +182,20 @@
       (l (size) (sp-samples-new size (l a (noise))))))
 
   (define*
-    (sp-band-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~) (trn-l 0.01)
+    (sp-noise-event start end amplitudes cut-l cut-h #:key (noise sp-noise-uniform~) (trn-l 0.01)
       (trn-h 0.01)
       reject
       (resolution 96)
       repeat-noise)
     "integer integer (sp-path ...) sp-path sp-path [keys ...] -> seq-event
-     create a band of noise filtered by a windowed sinc filter.
-     if repeat-noise is true, source noise samples are reused and not regenerated.
+     create noise filtered by sp-filter!.
      # keys
-     noise: procedure:{-> sample}
-     trn-l: sp-path
-     trn-h: sp-path
-     reject: boolean
-     repeat-noise: boolean
-     resolution: integer"
+     noise: procedure:{-> sample}   (gives noise samples)
+     trn-l: sp-path   (transition bandwidth)
+     trn-h: sp-path   (transition bandwidth)
+     reject: boolean   (band reject / notch filter if true)
+     repeat-noise: boolean   (if true then source noise samples are reused and not regenerated)
+     resolution: integer   (number of samples after which parameters are updated)"
     (let
       ( (amplitudes (map sp-path-procedure amplitudes)) (cut-l (sp-path-procedure cut-l))
         (cut-h (sp-path-procedure cut-h)) (trn-l (sp-path-procedure trn-l))
@@ -223,19 +223,22 @@
             (seq-event-state-update event filter-state)))
         #f)))
 
-  #;(define*
-    (sp-low-pass-event start end amplitudes radius #:key (noise sp-noise-uniform~) (resolution 96)
+  (define*
+    (sp-cheap-noise-event start end amplitudes cutoff passes type #:key (q-factor 0)
+      (noise sp-noise-uniform~)
+      (resolution 96)
       repeat-noise)
-    "integer integer (sp-path ...) sp-path [keys ...] -> seq-event
-     create a band of noise filtered by a centered moving average filter.
-     amount gives the radius of the moving average.
-     if repeat-noise is true, source noise samples are reused and not regenerated.
+    "integer integer (sp-path ...) sp-path integer symbol [keys ...] -> seq-event
+     like sp-noise-event but using sp-cheap-filter!.
+     see sp-cheap-filter! for more details.
+     type: symbol:low/high/band/peak/notch/all
      # keys
      noise: procedure:{-> sample}
+     q-factor: real:0..1
      repeat-noise: boolean
      resolution: integer"
     (let
-      ( (amplitudes (map sp-path-procedure amplitudes)) (radius (sp-path-procedure radius))
+      ( (amplitudes (map sp-path-procedure amplitudes)) (cutoff (sp-path-procedure cutoff))
         (get-noise (get-noise-f repeat-noise noise start end)))
       (seq-event-new start end
         (l (t offset size output event)
@@ -246,10 +249,12 @@
                 (fold-integers count (seq-event-state event)
                   (l (block-index filter-state)
                     (let* ((block-offset (* resolution block-index)) (t (+ t block-offset)))
-                      (sp-moving-average! samples noise-samples
-                        noise-samples noise-samples
-                        (round (radius t)) block-offset resolution block-offset)
-                      #f)))))
+                      (sp-cheap-filter! type samples
+                        noise-samples (cutoff t)
+                        passes filter-state
+                        #:q-factor q-factor
+                        #:in-start block-offset
+                        #:in-count resolution #:out-start block-offset #:unity-gain #t))))))
             (each
               (l (output a) "apply amplitudes and sum into output"
                 (each-integer size
@@ -259,7 +264,7 @@
                         (* (a (+ t index)) (sp-samples-ref samples index)))))))
               output amplitudes)
             (seq-event-state-update event filter-state)))
-        #f)))
+        null)))
 
   (define* (sp-block->file a path sample-rate #:optional channels)
     "(samples:channel ...):block string integer [integer] -> unspecified"

@@ -11,7 +11,7 @@
     sp-multipass-fir!
     sp-one-pole-hp
     sp-one-pole-lp
-    sp-state-variable-filter
+    sp-state-variable-filter!
     sp-windowed-sinc-bp-br
     sp-windowed-sinc-lp-hp
     sph-sp-filter-description)
@@ -65,7 +65,7 @@
       (pair null null) points
       (if (and state (= (length points) (length state))) state (make-list (length points) #f))))
 
-  (define (sp-state-variable-filter type out in cutoff q-factor state in-start in-count out-start)
+  (define (sp-state-variable-filter! type out in cutoff q-factor state in-start in-count out-start)
     "symbol:low/high/band/notch/peak/all samples samples real real pair [integer integer integer] -> state
      a fast filter that supports multiple filter types in one.
      cutoff is as a fraction of the sample rate between 0 and 0.5.
@@ -77,9 +77,10 @@
         "integer pair -> pair
       calculate shared base values, set output at index to the result of calling f, then return the new state"
         (let*
-          ( (ic1eq (first state)) (ic2eq (tail state)) (v0 (sp-samples-ref in index))
+          ( (ic1eq (first state)) (ic2eq (tail state)) (v0 (sp-samples-ref in (+ in-start index)))
             (v1 (+ (* a1 ic1eq) (* a2 (- v0 ic2eq)))) (v2 (+ ic2eq (* g v1))))
-          (sp-samples-set! out index (f v0 v1 v2)) (pair (- (* 2 v1) ic1eq) (- (* 2 v2) ic2eq)))))
+          (sp-samples-set! out (+ out-start index) (f v0 v1 v2))
+          (pair (- (* 2 v1) ic1eq) (- (* 2 v2) ic2eq)))))
     (let*
       ( (g (tan (* sp-pi cutoff))) (k (- 2 (* 2 q-factor))) (a1 (/ 1 (+ 1 (* g (+ g k)))))
         (a2 (* g a1)))
@@ -125,13 +126,16 @@
       (out-start 0)
       (unity-gain #t))
     "symbol samples samples real:0..0.5 real:0..1 integer [integer integer integer] -> unspecified
-     a less processing intensive filter based on sp-state-variable-filter.
-     type can be low, high, band, notch, peak or all"
-    (sp-multipass!
-      (l (out in in-start in-count out-start state)
-        (sp-state-variable-filter type out in cutoff q-factor state in-start in-count out-start))
-      out in passes state in-start in-count out-start)
-    (if unity-gain (sp-set-unity-gain out in in-start in-count out-start)))
+     a less processing intensive filter based on sp-state-variable-filter!.
+     type can be low, high, band, notch, peak or all.
+     the basic filter algorithm is cheaper than the sp-filter! windowed sinc, especially with frequently changing parameter values,
+     but multiple passes and the processing for unity-gain relativise that quite a bit"
+    (begin-first
+      (sp-multipass!
+        (l (out in in-start in-count out-start state)
+          (sp-state-variable-filter! type out in cutoff q-factor state in-start in-count out-start))
+        out in passes state in-start in-count out-start)
+      (if unity-gain (sp-set-unity-gain out in in-start in-count out-start))))
 
   (define (sp-multipass-fir! transfer-f out in passes state in-start in-count out-start)
     "procedure samples samples integer list [integer integer integer] -> unspecified

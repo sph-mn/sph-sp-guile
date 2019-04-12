@@ -58,14 +58,9 @@ basics
 f32vector-sum :: f32vector [start end] -> number
 f64-nearly-equal? :: a b c ->
 f64vector-sum :: f64vector [start end] -> number
-sp-asymmetric-moving :: procedure real integer list -> (any:result-value . state)
-sp-asymmetric-moving-average :: real integer list -> (result-value . state)
-sp-asymmetric-moving-median :: real integer list -> (result-value . state)
-sp-asymmetric-moving-out :: procedure real integer (real:previous-value ...) -> (any:result-value previous-value ...):state
 sp-block-new :: channels size ->
 sp-block-overlap :: false/samples false/samples [real] -> false/samples
 sp-call-with-output-file :: path channels sample-rate f ->
-sp-change-limiter :: real integer real list -> (real:result-value real ...):state
 sp-convolution-filter! :: a b c d e ->
 sp-convolve :: a b [carryover carryover-len] ->
 sp-convolve! :: out a b carryover [carryover-len] -> unspecified
@@ -89,14 +84,12 @@ sp-file-position? :: sp-file -> boolean
 sp-file-read :: sp-file integer:sample-count -> (sample-vector ...):channel-data
 sp-file-sample-rate :: sp-file -> integer
 sp-file-write :: sp-file (sample-vector ...):channel-data [integer:sample-count] -> unspecified
-sp-filter-bank :: samples ((cutoff-l cutoff-h transition-l transition-h) ...) list -> ((samples ...) . state)
 sp-float-sum :: a ... ->
 sp-fold-frames :: procedure samples integer real:0..1 any ... -> (any ...):custom
 sp-fold-integers :: integer procedure any ... -> (any ...)
 sp-grain-map :: samples/integer integer procedure false/state -> (false/samples:output . state)
 sp-map-fold-integers :: count f custom ... ->
-sp-moving-average :: samples false/samples false/samples integer [integer/false integer/false] -> samples
-sp-moving-average! :: result source previous next radius [start end] -> unspecified
+sp-moving-average! :: a b c d e [f g h] ->
 sp-pi
 sp-plot-samples :: samples [#:type #:color] -> unspecified
 sp-plot-samples->file :: a path ->
@@ -106,6 +99,7 @@ sp-plot-spectrum->file :: a path ->
 sp-plot-spectrum-display-file :: path ->
 sp-sample-sum :: a ... ->
 sp-samples->list :: v ->
+sp-samples-absolute-max :: samples [integer integer] -> sample
 sp-samples-copy :: xvector -> xvector
 sp-samples-copy-zero :: a ->
 sp-samples-copy-zero* :: a c ->
@@ -118,22 +112,24 @@ sp-samples-length :: v ->
 sp-samples-map :: procedure:{any:element ... -> any} xvector ... -> xvector
 sp-samples-map! :: procedure:{any:element ... -> any} xvector ... -> unspecified
 sp-samples-map-with :: procedure:{any:variable any:element ... -> any} any:variable xvector -> xvector
+sp-samples-map-with! :: procedure:{any:variable any:element ... -> any} any:variable xvector -> unspecified
 sp-samples-map-with-index :: procedure:{index any:element ... -> any} xvector ... -> xvector
 sp-samples-multiply :: a factor ->
 sp-samples-new :: length [value] ->
+sp-samples-passthrough :: out in [in-start in-count out-start] ->
 sp-samples-ref :: v i ->
 sp-samples-set! :: v i x ->
 sp-samples-split :: samples integer -> (samples ...)
 sp-samples-threshold :: a limit ->
+sp-samples-zero! :: samples -> samples
 sp-samples? :: obj ->
 sp-scheduler :: additions integer state/false -> (output:samples/false state)
+sp-set-unity-gain :: out in in-start in-count out-start ->
 sp-sinc :: a ->
 sp-spectrum :: samples -> #(real ...)
 sp-window-hann :: offset size ->
-sp-windowed-sinc-bp-br :: samples real real real boolean false/convolution-filter-state -> samples
-sp-windowed-sinc-bp-br! :: a b c d e f g h ->
+sp-windowed-sinc-bp-br! :: a b c d e f g h [i] j ... ->
 sp-windowed-sinc-bp-br-ir :: a b c d e ->
-sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
 sph-sp-description
@@ -150,27 +146,57 @@ seq-event-data :: a ->
 seq-event-data-end :: a ->
 seq-event-data-f :: a ->
 seq-event-data-start :: a ->
-seq-event-group :: start end events ->
+seq-event-group :: integer integer seq-events -> seq-event
+seq-event-group-map :: integer integer procedure:{(samples ...) -> unspecified} seq-events -> seq-event
 seq-event-new :: procedure integer [integer any] -> seq-event
 seq-event-state :: a ->
 seq-event-state-update :: a state ->
 seq-events-new :: seq-event ... -> seq-events
 seq-parallel :: integer integer integer (samples:channel ...) seq-events -> seq-events
-sp-band-event :: integer integer (sp-path ...) sp-path sp-path #:noise procedure #:trn-l sp-path #:trn-h sp-path #:reject boolean -> event
-sp-blocks->file :: ((samples:channel ...):block ...) string integer integer integer -> unspecified
+sp-block->file :: (samples:channel ...):block string integer [integer] -> unspecified
+sp-blocks->file :: ((samples:channel ...):block ...) string integer [integer] -> unspecified
+sp-cheap-noise-event :: integer integer (sp-path ...) sp-path integer symbol [keys ...] -> seq-event
 sp-clip~ :: a ->
+sp-noise-event :: integer integer (sp-path ...) sp-path sp-path [keys ...] -> seq-event
 sp-noise-exponential~ :: [state] ->
 sp-noise-normal~ :: [state] ->
 sp-noise-uniform~ :: [state] ->
+sp-path :: spline-path/spline-path-config/number/point [keys ...] -> spline-path
+sp-path-procedure :: a ->
 sp-phase :: number number number -> number
+sp-rectangle :: integer integer number number -> number
+sp-rectangle~ :: integer sample sample -> sample
+sp-sawtooth~ :: t [wavelength] ->
 sp-sine~ :: integer integer -> sample
 sp-square~ :: integer integer -> sample
+sp-triangle :: integer integer number -> number
+sp-triangle~ :: integer:sample-count ... -> real:sample
 sp-wave-event :: integer integer (partial-config ...) -> seq-event
 sph-sp-synthesis-description
 ~~~
 
+## (sph sp filter)
+attenuating frequencies. sp-filter!, sp-cheap-filter! and more
+~~~
+sp-asymmetric-moving :: procedure real integer list -> (any:result-value . state)
+sp-asymmetric-moving-average :: real integer list -> (result-value . state)
+sp-asymmetric-moving-median :: real integer list -> (result-value . state)
+sp-asymmetric-moving-out :: procedure real integer (real:previous-value ...) -> (any:result-value previous-value ...):state
+sp-cheap-filter! :: symbol samples samples real:0..0.5 real:0..1 integer [integer integer integer] -> unspecified
+sp-filter! :: a b c d e f g h [i] j ... ->
+sp-moving-average :: samples false/samples false/samples integer [integer/false integer/false] -> samples
+sp-multipass! :: f out in passes state in-start in-count out-start ->
+sp-multipass-fir! :: procedure samples samples integer list [integer integer integer] -> unspecified
+sp-one-pole-hp :: out in cutoff passes state in-start in-count out-start ->
+sp-one-pole-lp :: out in cutoff passes state in-start in-count out-start ->
+sp-state-variable-filter! :: symbol:low/high/band/notch/peak/all samples samples real real pair [integer integer integer] -> state
+sp-windowed-sinc-bp-br :: samples real real real boolean false/convolution-filter-state -> samples
+sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
+sph-sp-filter-description
+~~~
+
 ## (sph sp vectorise)
-get sine and noise parameters for a sound. needs update
+get sine and noise parameters from signals. needs update of the used fft bindings
 ~~~
 sp-vectorise :: samples [integer] -> (series-element ...)
 ~~~

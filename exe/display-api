@@ -1,5 +1,6 @@
 #!/bin/sh
 echo "## (sph sp)"
+echo "basics"
 echo "~~~"
 scm-list-documentation "sph sp"
 echo "~~~"
@@ -10,7 +11,14 @@ echo "~~~"
 scm-list-documentation "sph sp synthesise"
 echo "~~~"
 echo
+echo "## (sph sp filter)"
+echo "attenuating frequencies. sp-filter!, sp-cheap-filter! and more"
+echo "~~~"
+scm-list-documentation "sph sp filter"
+echo "~~~"
+echo
 echo "## (sph sp vectorise)"
+echo "get sine and noise parameters from signals. needs update of the used fft bindings"
 echo "~~~"
 scm-list-documentation "sph sp vectorise"
 echo "~~~"
