@@ -55,148 +55,145 @@ installed files
 ## (sph sp)
 basics
 ~~~
-f32vector-sum :: f32vector [start end] -> number
+f32vector-sum :: a [b c] ->
 f64-nearly-equal? :: a b c ->
-f64vector-sum :: f64vector [start end] -> number
+f64vector-sum :: a [b c] ->
 sp-block-new :: channels size ->
-sp-block-overlap :: false/samples false/samples [real] -> false/samples
+sp-block-overlap :: a b [overlap-factor] ->
 sp-call-with-output-file :: path channels sample-rate f ->
 sp-convolution-filter! :: a b c d e ->
 sp-convolve :: a b [carryover carryover-len] ->
-sp-convolve! :: out a b carryover [carryover-len] -> unspecified
-sp-fft :: #(complex ...) -> #(complex ...)
-sp-fft-resynth :: samples procedure:{#(complex ...) -> #(complex ...)} -> samples
-sp-ffti :: #(complex ...) -> #(complex ...)
-sp-fftr :: samples -> #(complex ...)
-sp-fftri :: #(complex ...) -> samples
-sp-file-channel-count :: sp-file -> integer
-sp-file-close :: sp-file -> boolean
-sp-file-fold :: procedure integer string any ... -> any
-sp-file-fold-overlap :: procedure integer real string any ... -> any
-sp-file-input? :: sp-file -> boolean
+sp-convolve! :: a b c d [e] ->
+sp-fft :: a ->
+sp-fft-resynth :: f a ->
+sp-ffti :: a ->
+sp-fftr :: a ->
+sp-fftri :: a ->
+sp-file-channel-count :: a ->
+sp-file-close :: a ->
+sp-file-fold :: f segment-size path custom ... ->
+sp-file-fold-overlap :: f segment-size overlap-factor path custom ... ->
+sp-file-input? :: a ->
 sp-file-mode-read
 sp-file-mode-read-write
 sp-file-mode-write
-sp-file-open :: path mode [channel-count sample-rate] -> sp-file
-sp-file-position :: sp-file -> integer
-sp-file-position-set :: sp-file integer:sample-offset -> boolean
-sp-file-position? :: sp-file -> boolean
-sp-file-read :: sp-file integer:sample-count -> (sample-vector ...):channel-data
-sp-file-sample-rate :: sp-file -> integer
-sp-file-write :: sp-file (sample-vector ...):channel-data [integer:sample-count] -> unspecified
+sp-file-open :: a b [c d] ->
+sp-file-position :: a ->
+sp-file-position-set :: a b ->
+sp-file-position? :: a ->
+sp-file-read :: a b ->
+sp-file-sample-rate :: a ->
+sp-file-write :: a b c ->
 sp-float-sum :: a ... ->
-sp-fold-frames :: procedure samples integer real:0..1 any ... -> (any ...):custom
-sp-fold-integers :: integer procedure any ... -> (any ...)
-sp-grain-map :: samples/integer integer procedure false/state -> (false/samples:output . state)
+sp-fold-frames :: f input frame-size overlap-factor custom ... ->
+sp-fold-integers :: count f init ... ->
+sp-grain-map :: input count f state ->
 sp-map-fold-integers :: count f custom ... ->
 sp-moving-average! :: a b c d e [f g h] ->
 sp-pi
-sp-plot-samples :: samples [#:type #:color] -> unspecified
+sp-plot-samples :: a display-args ... ->
 sp-plot-samples->file :: a path ->
-sp-plot-samples-display-file :: string #:type symbol:lines/points #:color string -> unspecified
+sp-plot-samples-display-file :: file-path #:type #:color ->
 sp-plot-spectrum :: a ->
 sp-plot-spectrum->file :: a path ->
 sp-plot-spectrum-display-file :: path ->
 sp-sample-sum :: a ... ->
 sp-samples->list :: v ->
-sp-samples-absolute-max :: samples [integer integer] -> sample
-sp-samples-copy :: xvector -> xvector
+sp-samples-absolute-max :: in [in-start in-count] ->
+sp-samples-copy :: a ->
 sp-samples-copy-zero :: a ->
 sp-samples-copy-zero* :: a c ->
 sp-samples-divide :: a divisor ->
-sp-samples-each-index :: procedure:{integer integer:a-length -> unspecified} xvector -> unspecified
-sp-samples-extract :: integer integer samples -> samples
-sp-samples-extract-padded :: samples integer integer -> samples
+sp-samples-each-index :: f a ->
+sp-samples-extract :: input start count ->
+sp-samples-extract-padded :: input start count ->
 sp-samples-from-list :: elts ->
 sp-samples-length :: v ->
-sp-samples-map :: procedure:{any:element ... -> any} xvector ... -> xvector
-sp-samples-map! :: procedure:{any:element ... -> any} xvector ... -> unspecified
-sp-samples-map-with :: procedure:{any:variable any:element ... -> any} any:variable xvector -> xvector
-sp-samples-map-with! :: procedure:{any:variable any:element ... -> any} any:variable xvector -> unspecified
-sp-samples-map-with-index :: procedure:{index any:element ... -> any} xvector ... -> xvector
+sp-samples-map :: f a b ... ->
+sp-samples-map! :: f a b ... ->
+sp-samples-map-with :: f variable a ... ->
+sp-samples-map-with! :: f variable a ... ->
+sp-samples-map-with-index :: f a b ... ->
 sp-samples-multiply :: a factor ->
 sp-samples-new :: length [value] ->
 sp-samples-passthrough :: out in [in-start in-count out-start] ->
 sp-samples-ref :: v i ->
 sp-samples-set! :: v i x ->
-sp-samples-split :: samples integer -> (samples ...)
+sp-samples-split :: b count ->
 sp-samples-threshold :: a limit ->
-sp-samples-zero! :: samples -> samples
+sp-samples-zero! :: a [out-start count] ->
 sp-samples? :: obj ->
-sp-scheduler :: additions integer state/false -> (output:samples/false state)
+sp-scheduler :: additions output-size state ->
 sp-set-unity-gain :: out in in-start in-count out-start ->
 sp-sinc :: a ->
-sp-spectrum :: samples -> #(real ...)
+sp-spectrum :: a ->
 sp-window-hann :: offset size ->
 sp-windowed-sinc-bp-br! :: a b c d e f g h [i] j ... ->
 sp-windowed-sinc-bp-br-ir :: a b c d e ->
 sp-windowed-sinc-lp-hp! :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
-sph-sp-description
 ~~~
 
 ## (sph sp synthesise)
 sequencing and sound synthesis with composable sequencer objects
 ~~~
-seq :: integer integer integer (samples:channel ...) seq-events -> seq-events
-seq-block-series :: integer integer integer seq-events procedure:{(samples:channel ...) seq-events custom ... -> (seq-events custom ...)} -> (seq-events custom ...)
-seq-block-series->file :: string integer integer seq-events [#:block-size integer #:sample-rate integer] -> seq-events
-seq-block-series->list :: -> (events block ...)
+seq :: time offset size output events ->
+seq-block-series :: time channels count events f custom #:block-size #:progress #:parallel ->
+seq-block-series->file :: path time channels count events #:block-size #:sample-rate #:progress #:parallel ->
+seq-block-series->list :: time channels count events #:block-size #:progress #:parallel ->
 seq-event-data :: a ->
 seq-event-data-end :: a ->
 seq-event-data-f :: a ->
 seq-event-data-start :: a ->
-seq-event-group :: integer integer seq-events -> seq-event
-seq-event-group-map :: integer integer procedure:{(samples ...) -> unspecified} seq-events -> seq-event
-seq-event-new :: procedure integer [integer any] -> seq-event
+seq-event-group :: start end events ->
+seq-event-group-map :: start end f events custom ... ->
+seq-event-new :: start end f [state] ->
 seq-event-state :: a ->
 seq-event-state-update :: a state ->
-seq-events-new :: seq-event ... -> seq-events
-seq-parallel :: integer integer integer (samples:channel ...) seq-events -> seq-events
-sp-block->file :: (samples:channel ...):block string integer [integer] -> unspecified
-sp-blocks->file :: ((samples:channel ...):block ...) string integer [integer] -> unspecified
-sp-cheap-noise-event :: integer integer (sp-path ...) sp-path integer symbol [keys ...] -> seq-event
+seq-events-new :: a ... ->
+seq-parallel :: time offset size output events ->
+sp-block->file :: a path sample-rate [channels] ->
+sp-blocks->file :: a path sample-rate [channels] ->
+sp-cheap-noise-event :: start end amplitudes cutoff passes type #:q-factor #:noise #:resolution #:repeat-noise ->
 sp-clip~ :: a ->
-sp-noise-event :: integer integer (sp-path ...) sp-path sp-path [keys ...] -> seq-event
+sp-noise-event :: start end amplitudes cut-l cut-h #:noise #:trn-l #:trn-h #:reject #:resolution #:repeat-noise ->
 sp-noise-exponential~ :: [state] ->
 sp-noise-normal~ :: [state] ->
 sp-noise-uniform~ :: [state] ->
-sp-path :: spline-path/spline-path-config/number/point [keys ...] -> spline-path
+sp-path :: a #:dimension #:deep #:mapper #:randomise #:repeat #:reverse #:scale #:shift #:stretch ->
 sp-path-procedure :: a ->
-sp-phase :: number number number -> number
-sp-rectangle :: integer integer number number -> number
-sp-rectangle~ :: integer sample sample -> sample
+sp-phase :: y change phase-size ->
+sp-rectangle :: t width-a width-b min-value max-value ->
+sp-rectangle~ :: t a b ->
 sp-sawtooth~ :: t [wavelength] ->
-sp-sine~ :: integer integer -> sample
-sp-square~ :: integer integer -> sample
-sp-triangle :: integer integer number -> number
-sp-triangle~ :: integer:sample-count ... -> real:sample
-sp-wave-event :: integer integer (partial-config ...) -> seq-event
-sph-sp-synthesis-description
+sp-sine~ :: t [wavelength] ->
+sp-square~ :: t [wavelength] ->
+sp-triangle :: t a b height ->
+sp-triangle~ :: t [a b] ->
+sp-wave-event :: start end amplitudes wavelength #:phase #:generator #:phase-length ->
 ~~~
 
 ## (sph sp filter)
 attenuating frequencies. sp-filter!, sp-cheap-filter! and more
 ~~~
-sp-asymmetric-moving :: procedure real integer list -> (any:result-value . state)
-sp-asymmetric-moving-average :: real integer list -> (result-value . state)
-sp-asymmetric-moving-median :: real integer list -> (result-value . state)
-sp-asymmetric-moving-out :: procedure real integer (real:previous-value ...) -> (any:result-value previous-value ...):state
-sp-cheap-filter! :: symbol samples samples real:0..0.5 real:0..1 integer [integer integer integer] -> unspecified
-sp-filter! :: a b c d e f g h [i] j ... ->
-sp-moving-average :: samples false/samples false/samples integer [integer/false integer/false] -> samples
+sp-asymmetric-moving :: f current-value width state ->
+sp-asymmetric-moving-average :: current-value width state ->
+sp-asymmetric-moving-median :: current-value width state ->
+sp-asymmetric-moving-out :: f current-value width state ->
+sp-cheap-filter! :: type out in cutoff passes state #:q-factor #:in-start #:in-count #:out-start #:unity-gain ->
+sp-filter! :: out in cutoff-l cutoff-h transition-l transition-h is-reject state ->
+sp-moving-average :: in prev next radius [in-start in-count out-start] ->
 sp-multipass! :: f out in passes state in-start in-count out-start ->
-sp-multipass-fir! :: procedure samples samples integer list [integer integer integer] -> unspecified
+sp-multipass-fir! :: transfer-f out in passes state in-start in-count out-start ->
 sp-one-pole-hp :: out in cutoff passes state in-start in-count out-start ->
 sp-one-pole-lp :: out in cutoff passes state in-start in-count out-start ->
-sp-state-variable-filter! :: symbol:low/high/band/notch/peak/all samples samples real real pair [integer integer integer] -> state
-sp-windowed-sinc-bp-br :: samples real real real boolean false/convolution-filter-state -> samples
-sp-windowed-sinc-lp-hp :: samples real real boolean false/convolution-filter-state -> samples
-sph-sp-filter-description
+sp-state-variable-filter! :: type out in cutoff q-factor state in-start in-count out-start ->
+sp-windowed-sinc-bp-br :: in cutoff-l cutoff-h transition-l transition-h is-reject state ->
+sp-windowed-sinc-lp-hp :: in cutoff transition is-high-pass state ->
 ~~~
 
 ## (sph sp vectorise)
 get sine and noise parameters from signals. needs update of the used fft bindings
 ~~~
-sp-vectorise :: samples [integer] -> (series-element ...)
+sp-vectorise :: input #:duration ->
 ~~~

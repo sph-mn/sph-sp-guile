@@ -2,23 +2,23 @@
 echo "## (sph sp)"
 echo "basics"
 echo "~~~"
-scm-list-documentation "sph sp"
+scm-list-documentation "sph sp" | grep -v 'description$'
 echo "~~~"
 echo
 echo "## (sph sp synthesise)"
 echo "sequencing and sound synthesis with composable sequencer objects"
 echo "~~~"
-scm-list-documentation "sph sp synthesise"
+scm-list-documentation "sph sp synthesise" | grep -v 'description$'
 echo "~~~"
 echo
 echo "## (sph sp filter)"
 echo "attenuating frequencies. sp-filter!, sp-cheap-filter! and more"
 echo "~~~"
-scm-list-documentation "sph sp filter"
+scm-list-documentation "sph sp filter" | grep -v 'description$'
 echo "~~~"
 echo
 echo "## (sph sp vectorise)"
 echo "get sine and noise parameters from signals. needs update of the used fft bindings"
 echo "~~~"
-scm-list-documentation "sph sp vectorise"
+scm-list-documentation "sph sp vectorise" | grep -v 'description$'
 echo "~~~"

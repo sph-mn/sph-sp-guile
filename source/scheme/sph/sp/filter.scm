@@ -46,7 +46,8 @@
       (list out
         (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h is-reject state))))
 
-  (define sp-filter! sp-windowed-sinc-bp-br!)
+  (define (sp-filter! out in cutoff-l cutoff-h transition-l transition-h is-reject state)
+    (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h is-reject state))
 
   (define (sp-filter-bank in points state)
     "samples ((cutoff-l cutoff-h transition-l transition-h) ...) list -> ((samples ...) . state)
