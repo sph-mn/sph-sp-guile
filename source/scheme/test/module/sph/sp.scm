@@ -4,6 +4,7 @@
     (sph number)
     (sph string)
     (sph sp)
+    (sph sp filter)
     (sph list)
     (rnrs bytevectors))
 
@@ -143,8 +144,7 @@
       ; no prev/next, bigger width
       ((1 2.5 4.0 1.5 -3.0) #f #f 2) (1.5 1.8 1.2 1.0 0.5)
       ; prev/next. expected taken from past output
-      ((2 1 0 3) (8 4) (5 9) 4)
-      (2.0 2.5555555555555554 3.5555555555555554 2.6666666666666665)
+      ((2 1 0 3) (8 4) (5 9) 4) (2.0 2.5555555555555554 3.5555555555555554 2.6666666666666665)
       ; no next but prev
       ((2 1 0 3) (8 4) #f 4) (2.0 2.0 2.0 1.1111111640930176)
       ; no prev but next

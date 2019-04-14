@@ -23,7 +23,7 @@
     (sph number)
     (sph other)
     (sph sp)
-    (only (guile) make-list)
+    (only (guile) make-list simple-format)
     (only (srfi srfi-1) drop-right))
 
   (define sph-sp-filter-description
@@ -76,7 +76,7 @@
     (define (transfer-f g a1 a2 f)
       (l (index state)
         "integer pair -> pair
-      calculate shared base values, set output at index to the result of calling f, then return the new state"
+        calculate shared base values, set output at index to the result of calling f, then return the new state"
         (let*
           ( (ic1eq (first state)) (ic2eq (tail state)) (v0 (sp-samples-ref in (+ in-start index)))
             (v1 (+ (* a1 ic1eq) (* a2 (- v0 ic2eq)))) (v2 (+ ic2eq (* g v1))))

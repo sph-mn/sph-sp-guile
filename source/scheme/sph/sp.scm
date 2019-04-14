@@ -397,15 +397,16 @@
   (define (sp-set-unity-gain out in in-start in-count out-start)
     "adjust amplitude of out to match the one of in"
     (let*
-      ( (difference
-          (/ (sp-samples-absolute-max out out-start in-count)
-            (sp-samples-absolute-max in in-start in-count)))
-        (correction (float-sum 1 (/ (- 1 difference) difference))))
-      (if (not (zero? difference))
-        (each-integer in-count
-          (l (index)
-            (sp-samples-set! out (+ out-start index)
-              (* correction (sp-samples-ref out (+ out-start index)))))))))
+      ( (in-max (sp-samples-absolute-max in in-start in-count))
+        (out-max (sp-samples-absolute-max out out-start in-count)))
+      (if (not (or (zero? in-max) (zero? out-max)))
+        (let*
+          ( (difference (/ out-max in-max))
+            (correction (float-sum 1 (/ (- 1 difference) difference))))
+          (each-integer in-count
+            (l (index)
+              (sp-samples-set! out (+ out-start index)
+                (* correction (sp-samples-ref out (+ out-start index))))))))))
 
   (define*
     (sp-samples-passthrough out in #:optional (in-start 0)
