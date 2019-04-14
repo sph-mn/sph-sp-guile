@@ -145,24 +145,31 @@ seq-event-data :: a ->
 seq-event-data-end :: a ->
 seq-event-data-f :: a ->
 seq-event-data-start :: a ->
+seq-event-end :: args ... ->
 seq-event-group :: start end events ->
 seq-event-group-map :: start end f events custom ... ->
 seq-event-new :: start end f [state] ->
+seq-event-start :: args ... ->
 seq-event-state :: a ->
 seq-event-state-update :: a state ->
+seq-events-end :: a ->
+seq-events-from-list :: a ->
 seq-events-new :: a ... ->
+seq-events-start :: args ... ->
 seq-parallel :: time offset size output events ->
 sp-block->file :: a path sample-rate [channels] ->
 sp-blocks->file :: a path sample-rate [channels] ->
 sp-cheap-noise-event :: start end amplitudes cutoff passes type #:q-factor #:noise #:resolution #:repeat-noise ->
 sp-clip~ :: a ->
+sp-events->block :: channels events [start-offset] ->
 sp-noise-event :: start end amplitudes cut-l cut-h #:noise #:trn-l #:trn-h #:reject #:resolution #:repeat-noise ->
 sp-noise-exponential~ :: [state] ->
 sp-noise-normal~ :: [state] ->
 sp-noise-uniform~ :: [state] ->
 sp-path :: a #:dimension #:deep #:mapper #:randomise #:repeat #:reverse #:scale #:shift #:stretch ->
-sp-path-procedure :: a ->
+sp-path->procedure :: a ->
 sp-phase :: y change phase-size ->
+sp-precompiled-event :: channels events ->
 sp-rectangle :: t width-a width-b min-value max-value ->
 sp-rectangle~ :: t a b ->
 sp-sawtooth~ :: t [wavelength] ->
