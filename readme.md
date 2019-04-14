@@ -163,8 +163,6 @@ sp-cheap-noise-event :: start end amplitudes cutoff passes type #:q-factor #:noi
 sp-clip~ :: a ->
 sp-events->block :: channels events [start-offset] ->
 sp-noise-event :: start end amplitudes cut-l cut-h #:noise #:trn-l #:trn-h #:reject #:resolution #:repeat-noise ->
-sp-noise-exponential~ :: [state] ->
-sp-noise-normal~ :: [state] ->
 sp-noise-uniform~ :: [state] ->
 sp-path :: a #:dimension #:deep #:mapper #:randomise #:repeat #:reverse #:scale #:shift #:stretch ->
 sp-path->procedure :: a ->
