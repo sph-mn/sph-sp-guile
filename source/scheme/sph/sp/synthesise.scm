@@ -26,8 +26,6 @@
     sp-clip~
     sp-events->block
     sp-noise-event
-    sp-noise-exponential~
-    sp-noise-normal~
     sp-noise-uniform~
     sp-path
     sp-path*
@@ -83,8 +81,6 @@
       (if (< remainder a) (* remainder (/ height a)) (* (- b (- remainder a)) (/ height b)))))
 
   (define* (sp-noise-uniform~ #:optional (state *random-state*)) (- (* 2 (random:uniform state)) 1))
-  (define* (sp-noise-exponential~ #:optional (state *random-state*)) (- (* 2 (random:exp state)) 1))
-  (define* (sp-noise-normal~ #:optional (state *random-state*)) (- (* 2 (random:normal state)) 1))
 
   (define* (sp-square~ t #:optional (wavelength 96000))
     "integer integer -> sample
