@@ -25,6 +25,8 @@
     sp-cheap-noise-event
     sp-clip~
     sp-events->block
+    sp-fm-synth-event
+    sp-fm-synth-event*
     sp-noise-event
     sp-noise-uniform~
     sp-path
@@ -63,7 +65,8 @@
       *random-state*)
     (only (rnrs base) set!)
     (only (sph number) float-sum)
-    (only (sph other) each-integer procedure->cached-procedure))
+    (only (sph other) each-integer procedure->cached-procedure)
+    (only (srfi srfi-1) partition))
 
   (define sph-sp-synthesis-description
     "sequencing and sound synthesis with composable sequencer objects.
@@ -512,4 +515,53 @@
                         (sp-samples-ref in (+ t index)))))))
               output cache)
             event)))
-      (l* (start #:optional end) (seq-event-new start (or end (+ start events-end)) event-f)))))
+      (l* (start #:optional end) (seq-event-new start (or end (+ start events-end)) event-f))))
+
+  (define-syntax-rule (sp-fm-synth-event* start duration operator ...)
+    (sp-fm-synth-event start duration (qq (operator ...))))
+
+  (define (sp-fm-synth-event start duration operators)
+    "for each operator it allows control of amplitude, wavelength and phase offset per channel.
+     operator config elements are (id modulator-of (amplitude-path ...) (wavelength-path ...) (phase-offset ...))
+     (sp-fm-synth-event* start duration
+       (1 0 (0.9) (2000) (0))
+       (4 1 (0.7) (3000) (0)))"
+    (define (evaluate t amplitudes wavelengths phases . modulators) "-> (value . state)"
+      (let*
+        ( (modulator-output (map (l (a) (apply evaluate t a)) modulators))
+          (modulator-samples (map first modulator-output))
+          (phases
+            (apply map
+              (l (a b . mod)
+                (let (wavelength (apply float-sum (b t) (map (l (a) (* a (b t))) mod)))
+                  (sp-phase a (round (/ 96000 wavelength)) 96000)))
+              phases wavelengths modulator-samples)))
+        (pairs (map (l (a b) (* (a t) (sp-sine~ b 96000))) amplitudes phases) amplitudes
+          wavelengths phases (map tail modulator-output))))
+    (define (state-new carrier operators)
+      "used to create a list of nested lists used and updated by evaluate.
+       nested lists are state values for dependent modulators"
+      (apply
+        (l (carrier-id modulator-of amplitudes wavelengths phases)
+          (apply-values
+            (l (modulators operators)
+              (pairs (map sp-path->procedure amplitudes) (map sp-path->procedure wavelengths)
+                phases (map (l (a) (state-new a operators)) modulators)))
+            (partition (l (a) (eqv? carrier-id (second a))) operators)))
+        carrier))
+    (seq-event-new start (+ start duration)
+      (l (time offset size output event)
+        (seq-event-state-update event
+          (fold-integers size (seq-event-state event)
+            (l (index state)
+              (let*
+                ( (result (map (l (a) (apply evaluate (+ index time) a)) state))
+                  (samples (map first result)) (state (map tail result)))
+                (apply each
+                  (l (output . samples)
+                    (sp-samples-set! output (+ offset index)
+                      (apply float-sum (sp-samples-ref output (+ offset index)) samples)))
+                  output samples)
+                state)))))
+      (apply-values (l (carriers operators) (map (l (a) (state-new a operators)) carriers))
+        (partition (l (a) (zero? (second a))) operators)))))
