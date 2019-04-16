@@ -31,13 +31,16 @@
     sp-noise-uniform~
     sp-path
     sp-path*
-    sp-path->procedure
+    sp-path-procedure
+    sp-path-procedure-fast
     sp-phase
+    sp-phase-float
     sp-precompiled-event
     sp-rectangle
     sp-rectangle~
     sp-samples-list-add-offsets
     sp-sawtooth~
+    sp-sine-2~
     sp-sine~
     sp-square~
     sp-triangle
@@ -57,6 +60,7 @@
       compose
       const
       floor
+      inexact->exact
       make-list
       modulo
       random:exp
@@ -90,7 +94,13 @@
      center will fall nicely between two samples if the wavelength is even"
     (if (< (modulo (* 2 t) (* 2 wavelength)) wavelength) -1 1))
 
-  (define* (sp-sine~ t #:optional (wavelength 96000))
+  (define sine-96000
+    (let ((step (/ (* 2 sp-pi) 96000)) (samples (sp-samples-new 96000)))
+      (each-integer 96000 (l (t) (sp-samples-set! samples t (sin (* t step))))) samples))
+
+  (define (sp-sine~ t) (sp-samples-ref sine-96000 t))
+
+  (define* (sp-sine-2~ t #:optional (wavelength 96000))
     "integer integer -> sample
      return a value for a repeating sine with a wavelength of width.
      if wavelength is divisible by four then maxima are sample aligned"
@@ -111,6 +121,15 @@
   (define (sp-clip~ a) "limit value to not exceed -1 or 1" (if (< 0 a) (min 1.0 a) (max -1.0 a)))
 
   (define (sp-phase y change phase-size)
+    "number number number -> number
+     phase generator that allows for high resolution modulation.
+     * y: previous result or another starting value to continue from
+     * change: how fast the phase should progress. frequency
+     * phase-size: value at which the cycle should repeat
+     example: (sp-phase 0.0 100 96000)"
+    (let (y (+ change y)) (if (<= phase-size y) (modulo y phase-size) y)))
+
+  (define (sp-phase-float y change phase-size)
     "number number number -> number
      phase generator that allows for high resolution modulation and non-linear transitions.
      * y: previous result or another starting value to continue from
@@ -144,7 +163,19 @@
   (define-syntax-rule (sp-path-new* (options ...) segment ...)
     (sp-path-new (list (quasiquote segment) ...) options ...))
 
-  (define (sp-path->procedure a) (if (procedure? a) a (spline-path->procedure (sp-path a))))
+  (define (sp-path-procedure a) (if (procedure? a) a (spline-path->procedure (sp-path a))))
+
+  (define* (sp-path-procedure-fast a #:key (dimension 1))
+    "spline-path/spline-path-config/number/point [keys ...] -> procedure"
+    (let*
+      ( (path
+          (cond
+            ((spline-path? a) a)
+            ((number? a) (spline-path-constant a))
+            ((list? a) (if (every number? a) (apply spline-path-constant a) (spline-path-new a)))
+            (else a)))
+        (path-procedure (if (procedure? path) path (spline-path->procedure-fast path))))
+      (if dimension (compose (l (point) (list-ref point dimension)) path-procedure) path-procedure)))
 
   (define (sp-event-f-with-resolution resolution amplitudes input-f block-f output-map-f)
     "helper that calls f with a block-count and a buffer where it can write to.
@@ -179,7 +210,8 @@
         (seq-event-state-update event state))))
 
   (define*
-    (sp-wave-event start end amplitudes wavelength #:key (phase 0) (generator sp-sine~)
+    (sp-wave-event start end amplitudes wavelength #:key (phase 0)
+      (generator (l (a b) (sp-sine~ a)))
       (phase-length 96000))
     "integer integer (partial-config ...) -> seq-event
      partial-config: ((amplitude ...) wavelength phase-offset)
@@ -188,8 +220,8 @@
     ; advances phase only in sample steps
     (seq-event-new start end
       (let
-        ( (amplitudes (map sp-path->procedure amplitudes))
-          (wavelength (sp-path->procedure wavelength))
+        ( (amplitudes (map sp-path-procedure amplitudes))
+          (wavelength (sp-path-procedure wavelength))
           (null-samples (make-list (length amplitudes) 0)))
         (l (time offset size output event)
           (seq-event-state-update event
@@ -236,9 +268,9 @@
      repeat-noise: boolean   (if true then source noise samples are reused and not regenerated)
      resolution: integer   (number of samples after which parameters are updated)"
     (let
-      ( (amplitudes (map sp-path->procedure amplitudes)) (cut-l (sp-path->procedure cut-l))
-        (cut-h (sp-path->procedure cut-h)) (trn-l (sp-path->procedure trn-l))
-        (trn-h (sp-path->procedure trn-h)) (get-noise (get-noise-f repeat-noise noise start end)))
+      ( (amplitudes (map sp-path-procedure amplitudes)) (cut-l (sp-path-procedure cut-l))
+        (cut-h (sp-path-procedure cut-h)) (trn-l (sp-path-procedure trn-l))
+        (trn-h (sp-path-procedure trn-h)) (get-noise (get-noise-f repeat-noise noise start end)))
       (seq-event-new start end
         (sp-event-f-with-resolution resolution amplitudes
           get-noise
@@ -263,7 +295,7 @@
      repeat-noise: boolean
      resolution: integer"
     (let
-      ( (amplitudes (map sp-path->procedure amplitudes)) (cutoff (sp-path->procedure cutoff))
+      ( (amplitudes (map sp-path-procedure amplitudes)) (cutoff (sp-path-procedure cutoff))
         (get-noise (get-noise-f repeat-noise noise start end)))
       (seq-event-new start end
         (sp-event-f-with-resolution resolution amplitudes
@@ -380,7 +412,7 @@
                        (l (index)
                          (sp-samples-set! output (+ offset index)
                            (sp-sample-sum (sp-samples-ref output (+ offset index))
-                             (sp-sine~ (+ index time) 5000))))))
+                             (sp-sine~ (+ index time)))))))
                    output)
                  event)))))
        (seq-parallel 0 0 96000 result events)
@@ -526,18 +558,33 @@
      (sp-fm-synth-event* start duration
        (1 0 (0.9) (2000) (0))
        (4 1 (0.7) (3000) (0)))"
-    (define (evaluate t amplitudes wavelengths phases . modulators) "-> (value . state)"
+    (define (evaluate time offset size output phases wavelengths amplitudes . modulators)
+      "-> (value . state)"
       (let*
-        ( (modulator-output (map (l (a) (apply evaluate t a)) modulators))
+        ( (modulator-output
+            (map
+              (l (a) (apply evaluate time 0 size (map (l a (sp-samples-new size)) amplitudes) a))
+              modulators))
           (modulator-samples (map first modulator-output))
           (phases
             (apply map
-              (l (a b . mod)
-                (let (wavelength (apply float-sum (b t) (map (l (a) (* a (b t))) mod)))
-                  (sp-phase a (round (/ 96000 wavelength)) 96000)))
-              phases wavelengths modulator-samples)))
-        (pairs (map (l (a b) (* (a t) (sp-sine~ b 96000))) amplitudes phases) amplitudes
-          wavelengths phases (map tail modulator-output))))
+              (l (out phs wvl amp . mod)
+                (fold-integers size phs
+                  (l (index phs)
+                    (let*
+                      ( (t (+ time index)) (wvl (wvl t))
+                        (wvl
+                          (inexact->exact
+                            (round
+                              (/ 96000
+                                (apply float-sum wvl
+                                  (map (l (a) (* (sp-samples-ref a index) wvl)) mod))))))
+                        (phs (sp-phase phs wvl 96000)))
+                      (sp-samples-set! out (+ offset index)
+                        (float-sum (sp-samples-ref out (+ offset index)) (* (amp t) (sp-sine~ phs))))
+                      phs))))
+              output phases wavelengths amplitudes modulator-samples)))
+        (pairs output phases wavelengths amplitudes (map tail modulator-output))))
     (define (state-new carrier operators)
       "used to create a list of nested lists used and updated by evaluate.
        nested lists are state values for dependent modulators"
@@ -545,23 +592,14 @@
         (l (carrier-id modulator-of amplitudes wavelengths phases)
           (apply-values
             (l (modulators operators)
-              (pairs (map sp-path->procedure amplitudes) (map sp-path->procedure wavelengths)
-                phases (map (l (a) (state-new a operators)) modulators)))
+              (pairs phases (map sp-path-procedure-fast wavelengths)
+                (map sp-path-procedure-fast amplitudes)
+                (map (l (a) (state-new a operators)) modulators)))
             (partition (l (a) (eqv? carrier-id (second a))) operators)))
         carrier))
     (seq-event-new start (+ start duration)
       (l (time offset size output event)
         (seq-event-state-update event
-          (fold-integers size (seq-event-state event)
-            (l (index state)
-              (let*
-                ( (result (map (l (a) (apply evaluate (+ index time) a)) state))
-                  (samples (map first result)) (state (map tail result)))
-                (apply each
-                  (l (output . samples)
-                    (sp-samples-set! output (+ offset index)
-                      (apply float-sum (sp-samples-ref output (+ offset index)) samples)))
-                  output samples)
-                state)))))
+          (map (l (a) (tail (apply evaluate time offset size output a))) (seq-event-state event))))
       (apply-values (l (carriers operators) (map (l (a) (state-new a operators)) carriers))
         (partition (l (a) (zero? (second a))) operators)))))
