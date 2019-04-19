@@ -168,8 +168,8 @@ SCM scm_sp_fft(SCM scm_input) {
   status_declare;
   sp_sample_count_t i;
   sp_sample_count_t input_len;
-  sp_sample_t* input_or_output_real;
-  sp_sample_t* input_or_output_imag;
+  double* input_or_output_real;
+  double* input_or_output_imag;
   SCM scm_output;
   scm_dynwind_begin(0);
   input_len = scm_c_vector_length(scm_input);
@@ -193,8 +193,8 @@ SCM scm_sp_ffti(SCM scm_input) {
   status_declare;
   sp_sample_count_t i;
   sp_sample_count_t input_len;
-  sp_sample_t* input_or_output_real;
-  sp_sample_t* input_or_output_imag;
+  double* input_or_output_real;
+  double* input_or_output_imag;
   SCM scm_output;
   scm_dynwind_begin(0);
   input_len = scm_c_vector_length(scm_input);
@@ -243,13 +243,13 @@ SCM scm_sp_file_read(SCM scm_file, SCM scm_sample_count) {
   file = scm_to_sp_file(scm_file);
   sample_count = scm_to_sp_sample_count(scm_sample_count);
   channel_count = file->channel_count;
-  status_require((sp_alloc_channel_array(channel_count, sample_count, (&channel_data))));
+  status_require((sp_block_alloc(channel_count, sample_count, (&channel_data))));
   status_require((sp_file_read(file, sample_count, channel_data, (&result_sample_count))));
   scm_result = scm_c_take_channel_data(channel_data, channel_count, sample_count);
 exit:
   if (status_is_failure) {
     if (channel_data) {
-      sp_channel_data_free(channel_data, channel_count);
+      sp_block_free(channel_data, channel_count);
     };
     if (sp_status_id_eof == status.id) {
       status.id = status_id_success;
@@ -279,10 +279,63 @@ exit:
 };
 SCM scm_sp_window_blackman(SCM a, SCM width) { scm_from_sp_float((sp_window_blackman((scm_to_sp_float(a)), (scm_to_sp_sample_count(width))))); };
 void scm_sp_convolution_filter_state_finalize(SCM a) { sp_convolution_filter_state_free((scm_to_sp_convolution_filter_state(a))); };
+/** memory will be managed by the guile garbage collector */
+status_t scm_to_sp_fm_synth_config(SCM scm_config, sp_channel_count_t channel_count, sp_fm_synth_count_t* config_len, sp_fm_synth_operator_t** config) {
+  status_declare;
+  sp_channel_count_t channel_i;
+  sp_sample_count_t c_len;
+  sp_fm_synth_operator_t* c;
+  sp_fm_synth_operator_t* op;
+  sp_fm_synth_count_t i;
+  SCM scm_op;
+  c_len = scm_to_sp_fm_synth_count((scm_length(scm_config)));
+  c = scm_gc_malloc_pointerless((c_len * sizeof(sp_fm_synth_operator_t)), "sp-fm-synth-config");
+  if (!c) {
+    status_set_both_goto(sp_status_group_sp, sp_status_id_memory);
+  };
+  for (i = 0; (i < c_len); i = (1 + i), scm_config = scm_tail(scm_config)) {
+    scm_op = scm_first(scm_config);
+    op = (c + i);
+    op->modifies = scm_to_sp_fm_synth_count((scm_c_vector_ref(scm_op, 0)));
+    for (channel_i = 0; (channel_i < channel_count); channel_i = (1 + channel_i)) {
+      (op->amplitude)[channel_i] = scm_to_sp_samples((scm_c_vector_ref((scm_c_vector_ref(scm_op, 1)), channel_i)));
+      (op->wavelength)[channel_i] = scm_to_sp_sample_counts((scm_c_vector_ref((scm_c_vector_ref(scm_op, 2)), channel_i)));
+      (op->phase_offset)[channel_i] = scm_to_sp_sample_count((scm_c_vector_ref((scm_c_vector_ref(scm_op, 3)), channel_i)));
+    };
+  };
+  *config_len = c_len;
+  *config = c;
+exit:
+  return (status);
+};
+SCM scm_sp_fm_synth_x(SCM scm_out, SCM scm_out_start, SCM scm_channel_count, SCM scm_start, SCM scm_duration, SCM scm_config, SCM scm_state) {
+  status_declare;
+  sp_channel_count_t channel_count;
+  sp_fm_synth_count_t config_len;
+  sp_fm_synth_operator_t* config;
+  sp_channel_count_t i;
+  sp_sample_t* out[sp_fm_synth_channel_limit];
+  sp_sample_count_t out_start;
+  sp_sample_count_t* state;
+  channel_count = scm_to_sp_channel_count(scm_channel_count);
+  out_start = scm_to_sp_sample_count(scm_out_start);
+  state = (scm_is_true(scm_state) ? scm_to_sp_sample_counts(scm_state) : 0);
+  for (i = 0; (i < channel_count); i = (1 + i), scm_out = scm_tail(scm_out)) {
+    out[i] = (out_start + scm_to_sp_samples((scm_first(scm_out))));
+  };
+  status_require((scm_to_sp_fm_synth_config(scm_config, channel_count, (&config_len), (&config))));
+  status_require((sp_fm_synth(out, channel_count, (scm_to_sp_sample_count(scm_start)), (scm_to_sp_sample_count(scm_duration)), config_len, config, (&state))));
+  if (!scm_is_true(scm_state)) {
+    scm_state = scm_c_take_sample_counts(state, (config_len * channel_count));
+  };
+exit:
+  scm_from_status_return(scm_state);
+};
 void sp_guile_init() {
   SCM type_slots;
   SCM scm_symbol_data;
   SCM m;
+  sp_initialise();
   m = scm_c_resolve_module("sph sp");
   scm_rnrs_raise = scm_c_public_ref("rnrs exceptions", "raise");
   scm_symbol_data = scm_from_latin1_symbol("data");
@@ -293,6 +346,7 @@ void sp_guile_init() {
   scm_c_module_define(m, "sp-file-mode-write", (scm_from_uint8(sp_file_mode_write)));
   scm_c_module_define(m, "sp-file-mode-read-write", (scm_from_uint8(sp_file_mode_read_write)));
   scm_c_define_procedure_c_init;
+  scm_c_define_procedure_c("sp-fm-synth!", 7, 0, 0, scm_sp_fm_synth_x, ("out out-start channel-count start duration config state -> state"));
   scm_c_define_procedure_c("sp-convolve!", 4, 1, 0, scm_sp_convolve_x, ("out a b carryover [carryover-len] -> unspecified"));
   scm_c_define_procedure_c("sp-window-blackman", 2, 0, 0, scm_sp_window_blackman, ("real width -> real"));
   scm_c_define_procedure_c("sp-windowed-sinc-lp-hp!", 6, 0, 0, scm_sp_windowed_sinc_lp_hp_x, ("out in cutoff transition is-high-pass state -> state\n    samples samples real:0..0.5 real:0..0.5 boolean convolution-filter-state -> unspecified\n    apply a windowed-sinc low-pass or high-pass filter to \"in\", write to \"out\" and return\n    an updated state object.\n    if state object is false, create a new state.\n    cutoff and transition are as a fraction of the sampling-rate"));

@@ -136,8 +136,24 @@
         (equal? (any->string result-b) (any->string result-a))))
     (assert-and (assert-true (test-convolve)) (assert-true (test-filter))))
 
-  (test-execute-procedures-lambda (sp-convolution-filter-2) (sp-convolution-filter)
-    (sp-convolve) (sp-windowed-sinc ((2 2 2 2) 0.1 0.08) #t)
+  (define-test (sp-fm-synth!)
+    (let*
+      ( (duration 100) (channels 2) (out-start 1)
+        (out (map-integers channels (l (a) (sp-samples-new (+ out-start duration))))) (start 0)
+        (state #f) (amp1 (sp-samples-new duration 1))
+        (amp2 (sp-samples-new duration 0.5))
+        (wvl1 (sp-sample-counts-from-list (make-list duration 20)))
+        (wvl2 (sp-sample-counts-from-list (make-list duration 10)))
+        (config
+          (list (vector 0 (vector amp1 amp1) (vector wvl1 wvl1) (vector 0 0))
+            (vector 1 (vector amp2 amp2) (vector wvl2 wvl2) (vector 0 0))))
+        (state (sp-fm-synth! out out-start 2 start duration config state))
+        (state (sp-fm-synth! out out-start 2 start duration config state)))
+      #t))
+
+  (test-execute-procedures-lambda (sp-fm-synth!) (sp-convolution-filter-2)
+    (sp-convolution-filter) (sp-convolve)
+    (sp-windowed-sinc ((2 2 2 2) 0.1 0.08) #t)
     (sp-moving-average
       ; no prev/next
       ((2 2 2 2) #f #f 1) (1.3333333333333333 2.0 2.0 1.3333333333333333)

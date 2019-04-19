@@ -7,9 +7,13 @@
   (scm-make-foreign-object-1 scm-type-convolution-filter-state pointer) (scm->sp-file a)
   (convert-type (scm-foreign-object-ref a 0) sp-file-t*) (scm->sp-convolution-filter-state a)
   (convert-type (scm-foreign-object-ref a 0) sp-convolution-filter-state-t*) (scm->sp-samples a)
-  (convert-type (SCM-BYTEVECTOR-CONTENTS a) sp-sample-t*) (scm->sp-samples-length a)
-  (sp-octets->samples (SCM-BYTEVECTOR-LENGTH a)) scm-samples?
-  scm-is-bytevector (define-sp-sine! scm-id f)
+  (begin
+    "gives a pointer to the memory region"
+    (convert-type (SCM-BYTEVECTOR-CONTENTS a) sp-sample-t*))
+  (scm->sp-samples-length a) (sp-octets->samples (SCM-BYTEVECTOR-LENGTH a))
+  (scm->sp-sample-counts a) (convert-type (SCM-BYTEVECTOR-CONTENTS a) sp-sample-count-t*)
+  scm-samples? scm-is-bytevector
+  (define-sp-sine! scm-id f)
   (begin
     "defines scm-sp-sine!, scm-sp-sine-lq!"
     (define (scm-id scm-data scm-len scm-sample-duration scm-freq scm-phase scm-amp)

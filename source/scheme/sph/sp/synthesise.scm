@@ -55,6 +55,7 @@
     (sph sp)
     (sph sp filter)
     (sph spline-path)
+    (sph time)
     (sph vector)
     (only (guile)
       compose
@@ -63,9 +64,8 @@
       inexact->exact
       make-list
       modulo
-      random:exp
+      simple-format
       random:uniform
-      random:normal
       *random-state*)
     (only (rnrs base) set!)
     (only (sph number) float-sum)
@@ -136,7 +136,7 @@
      * change: how fast the phase should progress. frequency
      * phase-size: value at which the cycle should repeat
      example: (sp-phase 0.0 (/ (* 2 sp-pi) 200) (* 2 sp-pi))"
-    (let (y (float-sum change y)) (if (< phase-size y) (float-sum y (- phase-size)) y)))
+    (let (y (+ change y)) (if (<= phase-size y) (+ y (- phase-size)) y)))
 
   (define* (sp-path a #:key (dimension 1) deep mapper randomise repeat reverse scale shift stretch)
     "spline-path/spline-path-config/number/point [keys ...] -> spline-path
@@ -484,18 +484,24 @@
     (seq-block-series time channels count events f custom #:key (block-size 96000) (progress #f)
       (parallel #t))
     "integer integer integer seq-events procedure:{(samples:channel ...) seq-events custom ... -> (seq-events custom ...)} -> (seq-events custom ...)"
-    (let (seq (if parallel seq-parallel seq))
+    (let
+      ( (seq (if parallel seq-parallel seq))
+        (progress-finish
+          (and progress
+            (let (before-time (utc-current))
+              (nullary
+                (simple-format #t "processing finished in ~A\n"
+                  (/ (- (utc-current) before-time) 1.0e9)))))))
       (apply sp-fold-integers count
         (l (block-index events . custom) "-> events custom ..."
-          (if progress
+          (and progress
             (display-line
               (string-append "processing block " (number->string (+ 1 block-index)) "...")))
           (let*
             ( (output (sp-block-new channels block-size))
               (result
                 (apply f (seq (* block-index block-size) 0 block-size output events) output custom)))
-            (if progress (if (= count (+ 1 block-index)) (display-line "processing finished")))
-            result))
+            (and progress (= count (+ 1 block-index)) (progress-finish)) result))
         events custom)))
 
   (define*
@@ -574,14 +580,10 @@
                     (let*
                       ( (t (+ time index)) (wvl (wvl t))
                         (wvl
-                          (inexact->exact
-                            (round
-                              (/ 96000
-                                (apply float-sum wvl
-                                  (map (l (a) (* (sp-samples-ref a index) wvl)) mod))))))
-                        (phs (sp-phase phs wvl 96000)))
+                          (/ 96000 (apply + wvl (map (l (a) (* (sp-samples-ref a index) wvl)) mod))))
+                        (phs (sp-phase-float phs wvl 96000)))
                       (sp-samples-set! out (+ offset index)
-                        (float-sum (sp-samples-ref out (+ offset index)) (* (amp t) (sp-sine~ phs))))
+                        (+ (sp-samples-ref out (+ offset index)) (* (amp t) (sp-sine-2~ phs))))
                       phs))))
               output phases wavelengths amplitudes modulator-samples)))
         (pairs output phases wavelengths amplitudes (map tail modulator-output))))

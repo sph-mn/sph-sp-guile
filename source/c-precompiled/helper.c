@@ -8,8 +8,10 @@
 #define scm_from_sp_convolution_filter_state(pointer) scm_make_foreign_object_1(scm_type_convolution_filter_state, pointer)
 #define scm_to_sp_file(a) ((sp_file_t*)(scm_foreign_object_ref(a, 0)))
 #define scm_to_sp_convolution_filter_state(a) ((sp_convolution_filter_state_t*)(scm_foreign_object_ref(a, 0)))
+/** gives a pointer to the memory region */
 #define scm_to_sp_samples(a) ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(a)))
 #define scm_to_sp_samples_length(a) sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(a)))
+#define scm_to_sp_sample_counts(a) ((sp_sample_count_t*)(SCM_BYTEVECTOR_CONTENTS(a)))
 #define scm_samples_p scm_is_bytevector
 /** defines scm-sp-sine!, scm-sp-sine-lq! */
 #define define_sp_sine_x(scm_id, f) \

@@ -1,6 +1,5 @@
 (library (sph sp)
   (export
-    f32vector-sum
     f64-nearly-equal?
     f64vector-sum
     sp-block-new
@@ -33,6 +32,8 @@
     sp-file?
     sp-filter-bank
     sp-float-sum
+    sp-fm-synth!
+    sp-fm-synth-config-new
     sp-fold-frames
     sp-fold-integers
     sp-grain-map
@@ -45,6 +46,8 @@
     sp-plot-spectrum
     sp-plot-spectrum->file
     sp-plot-spectrum-display-file
+    sp-sample-counts-from-list
+    sp-sample-counts-new
     sp-sample-sum
     sp-samples->list
     sp-samples-absolute-max
@@ -100,6 +103,8 @@
       f64vector->list
       f64vector?
       make-f64vector
+      make-u32vector
+      list->u32vector
       system*
       tmpnam)
     (only (rnrs sorting) list-sort)
@@ -112,13 +117,15 @@
 
   (load-extension "libguile-sph-sp" "sp_guile_init")
 
-  (define* (sp-samples-new length #:optional (value 0))
-    (if (procedure? value) (f64vector-create length value) (make-f64vector length value)))
-
   (define sph-sp-description
     "sph-sp bindings and additional utilities.
      block: (samples:channel ...)")
 
+  (define* (sp-samples-new size #:optional (value 0))
+    (if (procedure? value) (f64vector-create size value) (make-f64vector size value)))
+
+  (define* (sp-sample-counts-new size #:optional (value 0)) (make-u32vector size value))
+  (define sp-sample-counts-from-list list->u32vector)
   (define sp-pi (* 4 (atan 1)))
   (define sp-float-sum float-sum)
   (define sp-sample-sum float-sum)

@@ -3,6 +3,24 @@
   (scm->sp-sample a) (scm->double a)
   (scm-c-make-sp-samples len) (scm-make-f64vector (scm-from-sp-sample-count len) (scm-from-uint8 0))
   (scm-c-take-samples a len) (scm-take-f64vector a len)
+  (scm-c-take-sample-counts a len) (scm-take-u32vector a len)
+  (scm-from-sp-channel-count a) (scm-from-uint8 a)
+  (scm-from-sp-sample-rate a) (scm-from-uint32 a)
+  (scm-from-sp-sample-count a) (scm-from-uint32 a)
+  (scm-from-sp-float a) (scm-from-double a)
+  (scm->sp-channel-count a) (scm->uint8 a)
+  (scm->sp-fm-synth-count a) (scm->uint8 a)
+  (scm->sp-sample-rate a) (scm->uint32 a)
+  (scm->sp-sample-count a) (scm->uint32 a)
+  (scm->sp-float a) (scm->double a))
+
+; f32
+
+#;(pre-define
+  (scm-from-sp-sample a) (scm-from-double a)
+  (scm->sp-sample a) (scm->double a)
+  (scm-c-make-sp-samples len) (scm-make-f32vector (scm-from-sp-sample-count len) (scm-from-uint8 0))
+  (scm-c-take-samples a len) (scm-take-f32vector a len)
   (scm-from-sp-channel-count a) (scm-from-uint8 a)
   (scm-from-sp-sample-rate a) (scm-from-uint32 a)
   (scm-from-sp-sample-count a) (scm-from-size-t a)
