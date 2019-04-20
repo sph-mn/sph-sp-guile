@@ -4,16 +4,13 @@
     sp-asymmetric-moving-average
     sp-asymmetric-moving-median
     sp-asymmetric-moving-out
-    sp-cheap-filter!
-    sp-filter!
-    sp-moving-average
-    sp-multipass!
-    sp-multipass-fir!
+    sp-cheap-filter
+    sp-filter
+    sp-multipass
+    sp-multipass-fir
     sp-one-pole-hp
     sp-one-pole-lp
-    sp-state-variable-filter!
-    sp-windowed-sinc-bp-br
-    sp-windowed-sinc-lp-hp
+    sp-state-variable-filter
     sph-sp-filter-description)
   (import
     (rnrs sorting)
@@ -28,26 +25,12 @@
 
   (define sph-sp-filter-description
     "attenuating frequencies.
-     the main filter procedures are sp-filter! and sp-cheap-filter!.
+     the main filter procedures are sp-filter and sp-cheap-filter.
      both have parameters to control the portion of the input/output sample array that is being used
      to be able to process with parameters updated with certain sample resolution independent of sample array size")
 
-  (define* (sp-windowed-sinc-lp-hp in cutoff transition is-high-pass state)
-    "samples real real boolean false/convolution-filter-state -> samples
-     state is still eventually going to be modified"
-    (let (out (sp-samples-copy-zero in))
-      (list out (sp-windowed-sinc-lp-hp! out in cutoff transition is-high-pass state))))
-
-  (define* (sp-windowed-sinc-bp-br in cutoff-l cutoff-h transition-l transition-h is-reject state)
-    "samples real real real boolean false/convolution-filter-state -> samples
-     like sp-windowed-sinc-bp-br! but creates a new output samples vector as long as the input.
-     state is still eventually going to be modified"
-    (let (out (sp-samples-copy-zero in))
-      (list out
-        (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h is-reject state))))
-
-  (define (sp-filter! out in cutoff-l cutoff-h transition-l transition-h is-reject state)
-    (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h is-reject state))
+  (define (sp-filter out in cutoff-l cutoff-h transition-l transition-h is-reject state)
+    (sp-windowed-sinc-bp-br out in cutoff-l cutoff-h transition-l transition-h is-reject state))
 
   (define (sp-filter-bank in points state)
     "samples ((cutoff-l cutoff-h transition-l transition-h) ...) list -> ((samples ...) . state)
@@ -60,48 +43,18 @@
         (apply
           (l (cutoff-l cutoff-h transition-l transition-h)
             (let (out (sp-samples-copy-zero in))
-              (sp-windowed-sinc-bp-br! out in cutoff-l cutoff-h transition-l transition-h #f state)
+              (sp-windowed-sinc-bp-br out in cutoff-l cutoff-h transition-l transition-h #f state)
               (pair (pair out (first result)) (pair state (tail result)))))
           a))
       (pair null null) points
       (if (and state (= (length points) (length state))) state (make-list (length points) #f))))
 
-  (define (sp-state-variable-filter! type out in cutoff q-factor state in-start in-count out-start)
-    "symbol:low/high/band/notch/peak/all samples samples real real pair [integer integer integer] -> state
-     a fast filter that supports multiple filter types in one.
-     cutoff is as a fraction of the sample rate between 0 and 0.5.
-     uses the state-variable filter described here:
-     * http://www.cytomic.com/technical-papers
-     * http://www.earlevel.com/main/2016/02/21/filters-for-synths-starting-out/"
-    (define (transfer-f g a1 a2 f)
-      (l (index state)
-        "integer pair -> pair
-        calculate shared base values, set output at index to the result of calling f, then return the new state"
-        (let*
-          ( (ic1eq (first state)) (ic2eq (tail state)) (v0 (sp-samples-ref in (+ in-start index)))
-            (v1 (+ (* a1 ic1eq) (* a2 (- v0 ic2eq)))) (v2 (+ ic2eq (* g v1))))
-          (sp-samples-set! out (+ out-start index) (f v0 v1 v2))
-          (pair (- (* 2 v1) ic1eq) (- (* 2 v2) ic2eq)))))
-    (let*
-      ( (g (tan (* sp-pi cutoff))) (k (- 2 (* 2 q-factor))) (a1 (/ 1 (+ 1 (* g (+ g k)))))
-        (a2 (* g a1)))
-      (fold-integers in-count (or state (pair 0 0))
-        (transfer-f g a1
-          a2
-          (case type
-            ((low) (l (v0 v1 v2) v2))
-            ((high) (l (v0 v1 v2) (- v0 (* k v1) v2)))
-            ((band) (l (v0 v1 v2) v1))
-            ((notch) (l (v0 v1 v2) (- v0 (* k v1))))
-            ((peak) (l (v0 v1 v2) (+ (- (* 2 v2) v0) (* k v1))))
-            ((all) (l (v0 v1 v2) (- v0 (* 2 k v1)))))))))
-
-  (define (sp-multipass! f out in passes state in-start in-count out-start)
+  (define (sp-multipass f out in passes state in-start in-count out-start)
     "procedure samples samples integer (any ...)
      f :: out in in-start in-count out-start state -> state
      call f possibly multiple times with prepared output buffers to process input/output in series.
      internally uses one custom state value per pass so they are matched for seamlessness.
-     state can be the empty list if no state values are available"
+     state contains custom values updated with f and can be an empty list if no state values are available"
     (define (first-or-false a) (if (null? a) #f (first a)))
     (define (tail-or-null a) (if (null? a) a (tail a)))
     (if (= 1 passes) (list (f out in in-start in-count out-start (first-or-false state)))
@@ -122,30 +75,41 @@
               (pair (f out in-temp 0 in-count out-start (first-or-false state)) result-state)))))))
 
   (define*
-    (sp-cheap-filter! type out in cutoff passes state #:key (q-factor 0) (in-start 0)
+    (sp-cheap-filter type out in cutoff passes state #:key (q-factor 0) (in-start 0)
       (in-count (- (sp-samples-length in) in-start))
       (out-start 0)
       (unity-gain #t))
-    "symbol samples samples real:0..0.5 real:0..1 integer [integer integer integer] -> unspecified
-     a less processing intensive filter based on sp-state-variable-filter!.
+    "symbol samples samples real:0..0.5 integer samples [keys ...] -> unspecified
+     a less processing intensive filter based on sp-state-variable-filter.
      type can be low, high, band, notch, peak or all.
-     the basic filter algorithm is cheaper than the sp-filter! windowed sinc, especially with frequently changing parameter values,
+     the basic filter algorithm is cheaper than the sp-filter windowed sinc, especially with frequently changing parameter values,
      but multiple passes and the processing for unity-gain relativise that quite a bit"
-    (begin-first
-      (sp-multipass!
-        (l (out in in-start in-count out-start state)
-          (sp-state-variable-filter! type out in cutoff q-factor state in-start in-count out-start))
-        out in passes state in-start in-count out-start)
-      (if unity-gain (sp-set-unity-gain out in in-start in-count out-start))))
+    (let*
+      ( (f
+          (case type
+            ((low) sp-state-variable-filter-lp)
+            ((high) sp-state-variable-filter-hp)
+            ((band) sp-state-variable-filter-bp)
+            ((reject) sp-state-variable-filter-br)
+            ((peak) sp-state-variable-filter-peak)
+            ((all) sp-state-variable-filter-all)))
+        (state
+          (sp-multipass
+            (l (out in in-start in-count out-start state)
+              (f out out-start in in-start in-count cutoff q-factor (or state (sp-samples-new 2))))
+            out in passes state in-start in-count out-start)))
+      (if unity-gain (sp-set-unity-gain out in in-start in-count out-start)) state))
 
-  (define (sp-multipass-fir! transfer-f out in passes state in-start in-count out-start)
+  "out out-start in in-start in-count cutoff q-factor state -> unspecified"
+
+  (define (sp-multipass-fir transfer-f out in passes state in-start in-count out-start)
     "procedure samples samples integer list [integer integer integer] -> unspecified
      transfer-f :: sample:in sample:prev-in sample:prev-out -> sample
      call transfer-f for each sample of in with preceeding input/output values.
      preceeding values are taken from the last call if available in state and separate values are used for each state.
      the state object passed to transfer-f can be false if no preceeding values are available.
      use case: fir filters"
-    (sp-multipass!
+    (sp-multipass
       (l (out in in-start in-count out-start state)
         (let (prev (or state (list (sp-samples-ref in in-start) (sp-samples-ref out out-start))))
           (sp-samples-set! out out-start (apply transfer-f (sp-samples-ref in in-start) prev))
@@ -163,12 +127,12 @@
   (define (sp-one-pole-lp out in cutoff passes state in-start in-count out-start)
     "a one-pole filter with the transfer function y(n) = ((2 * cutoff) * (x(n) - y(n - 1))).
      the higher the cutoff, the less attenuated the stop-band"
-    (sp-multipass-fir!
+    (sp-multipass-fir
       (l (in prev-in prev-out) (float-sum prev-out (* (* cutoff 2) (float-sum in (- prev-out))))) out
       in passes state in-start in-count out-start))
 
   (define (sp-one-pole-hp out in cutoff passes state in-start in-count out-start)
-    (sp-multipass-fir!
+    (sp-multipass-fir
       (l (in prev-in prev-out) (* (* cutoff 2) (float-sum prev-out in (- prev-in)))) out
       in passes state in-start in-count out-start))
 
@@ -219,11 +183,4 @@
             ( (average-change (/ (abs (apply + (differences previous))) (- (length previous) 1)))
               (max-change (* max-factor average-change)))
             (max (min (+ max-change (first previous)) current) (- (first previous) max-change)))))
-      current-value width state))
-
-  (define* (sp-moving-average in prev next radius #:optional in-start in-count out-start)
-    "samples false/samples false/samples integer [integer/false integer/false] -> samples"
-    (sp-samples-copy-zero* in
-      (l (out)
-        (sp-moving-average! out in
-          prev next radius (or in-start 0) (or in-count (sp-samples-length in)) (or out-start 0))))))
+      current-value width state)))

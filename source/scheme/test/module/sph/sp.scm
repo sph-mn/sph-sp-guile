@@ -47,7 +47,9 @@
         (let*
           ( (source (sp-samples-from-list source)) (prev (and prev (sp-samples-from-list prev)))
             (next (and next (sp-samples-from-list next)))
-            (result (apply sp-moving-average source prev next distance a)))
+            (result
+              (let (out (sp-samples-copy-zero source))
+                (apply sp-moving-average out source prev next distance a) out)))
           (if (every (l (a b) (f64-nearly-equal? a b 1.0e-6)) ex (sp-samples->list result)) ex
             result)))
       in))
@@ -55,10 +57,10 @@
   (define-test (sp-windowed-sinc in ex)
     (list-bind in (in cutoff transition)
       (let* ((in (sp-samples-from-list in)) (out (sp-samples-copy-zero in)))
-        (sp-windowed-sinc-lp-hp! out in cutoff transition #f #f)
-        (sp-windowed-sinc-lp-hp! out in cutoff transition #t #f)
-        (sp-windowed-sinc-bp-br! out in cutoff cutoff transition transition #f #f)
-        (sp-windowed-sinc-bp-br! out in cutoff cutoff transition transition #t #f)
+        (sp-windowed-sinc-lp-hp out in cutoff transition #f #f)
+        (sp-windowed-sinc-lp-hp out in cutoff transition #t #f)
+        (sp-windowed-sinc-bp-br out in cutoff cutoff transition transition #f #f)
+        (sp-windowed-sinc-bp-br out in cutoff cutoff transition transition #t #f)
         ; check of result data to be implemented
         (assert-and (sp-samples? (sp-windowed-sinc-lp-hp-ir 0.1 0.08 #f))
           (sp-samples? (sp-windowed-sinc-lp-hp-ir 0.1 0.08 #t))
@@ -74,7 +76,13 @@
         (result
           (fold-multiple
             (l (a state result)
-              (let (b (sp-convolve a ir state)) (list (tail b) (pair (first b) result))))
+              (let
+                (b
+                  (let
+                    ( (state (or state (sp-samples-new (- (sp-samples-length ir) 1))))
+                      (out (sp-samples-copy-zero a)))
+                    (sp-convolve out a ir state) (pair out state)))
+                (list (tail b) (pair (first b) result))))
             (list a b c) #f null)))
       (equal? (convolve (append a-list a-list a-list) ir-list)
         (apply append (map sp-samples->list (reverse (pair (first result) (second result))))))))
@@ -83,8 +91,8 @@
     (let*
       ( (a-list (make-list 5 1.0)) (a (sp-samples-from-list a-list)) (b-list (make-list 5 2.0))
         (b (sp-samples-from-list b-list)) (out (sp-samples-new (- (length a-list) 1) 0.0))
-        (state (sp-convolution-filter! out a (l a b) (list 0.1 0.08) #f))
-        (state (sp-convolution-filter! out a (l a b) (list 0.1 0.08) state)))
+        (state (sp-convolution-filter out a (l a b) (list 0.1 0.08) #f))
+        (state (sp-convolution-filter out a (l a b) (list 0.1 0.08) state)))
       (sp-samples? out)))
 
   (define-test (sp-samples-extract)
@@ -104,7 +112,7 @@
               (let*
                 ( (samples (sp-samples-from-list (any->list samples)))
                   (output (sp-samples-copy-zero samples)))
-                (list output (sp-convolution-filter! output samples (l a ir) null state)))))
+                (list output (sp-convolution-filter output samples (l a ir) null state)))))
           (result-a
             (reverse
               (first
@@ -121,8 +129,10 @@
         ( (samples (list 1 2 3 4 5)) (ir (sp-samples-from-list (list 2 4 8 16 32 64)))
           (filter
             (l (samples state)
-              (let (samples (sp-samples-from-list (any->list samples)))
-                (sp-windowed-sinc-bp-br samples 0.1 0.4 0.08 0.08 #f state))))
+              (let*
+                ( (samples (sp-samples-from-list (any->list samples)))
+                  (out (sp-samples-copy-zero samples)))
+                (list out (sp-windowed-sinc-bp-br out samples 0.1 0.4 0.08 0.08 #f state)))))
           (result-a
             (reverse
               (first
@@ -136,7 +146,7 @@
         (equal? (any->string result-b) (any->string result-a))))
     (assert-and (assert-true (test-convolve)) (assert-true (test-filter))))
 
-  (define-test (sp-fm-synth!)
+  (define-test (sp-fm-synth)
     (let*
       ( (duration 100) (channels 2) (out-start 1)
         (out (map-integers channels (l (a) (sp-samples-new (+ out-start duration))))) (start 0)
@@ -147,12 +157,12 @@
         (config
           (list (vector 0 (vector amp1 amp1) (vector wvl1 wvl1) (vector 0 0))
             (vector 1 (vector amp2 amp2) (vector wvl2 wvl2) (vector 0 0))))
-        (state (sp-fm-synth! out out-start 2 start duration config state))
-        (state (sp-fm-synth! out out-start 2 start duration config state)))
+        (state (sp-fm-synth out out-start 2 start duration config state))
+        (state (sp-fm-synth out out-start 2 start duration config state)))
       #t))
 
-  (test-execute-procedures-lambda (sp-fm-synth!) (sp-convolution-filter-2)
-    (sp-convolution-filter) (sp-convolve)
+  (test-execute-procedures-lambda (sp-fm-synth) (sp-convolve)
+    (sp-convolution-filter-2) (sp-convolution-filter)
     (sp-windowed-sinc ((2 2 2 2) 0.1 0.08) #t)
     (sp-moving-average
       ; no prev/next

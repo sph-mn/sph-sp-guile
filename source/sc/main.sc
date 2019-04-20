@@ -28,7 +28,7 @@
   (set status (sp-file-position-set (scm->sp-file scm-file) (scm->size-t scm-sample-offset)))
   (scm-from-status-return SCM-UNSPECIFIED))
 
-(define (scm-sp-convolve! out a b carryover carryover-len) (SCM SCM SCM SCM SCM SCM)
+(define (scm-sp-convolve out a b carryover carryover-len) (SCM SCM SCM SCM SCM SCM)
   (declare
     a-len sp-sample-count-t
     b-len sp-sample-count-t
@@ -49,7 +49,7 @@
   (return SCM-UNSPECIFIED))
 
 (define
-  (scm-sp-windowed-sinc-lp-hp! scm-out scm-in scm-cutoff scm-transition scm-is-high-pass scm-state)
+  (scm-sp-windowed-sinc-lp-hp scm-out scm-in scm-cutoff scm-transition scm-is-high-pass scm-state)
   (SCM SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare
@@ -71,7 +71,7 @@
     (scm-from-status-return scm-state)))
 
 (define
-  (scm-sp-windowed-sinc-bp-br!
+  (scm-sp-windowed-sinc-bp-br
     scm-out
     scm-in
     scm-cutoff-l
@@ -167,7 +167,7 @@
   (label exit
     (return status)))
 
-(define (scm-sp-convolution-filter! scm-out scm-in scm-ir-f scm-ir-f-arguments scm-state)
+(define (scm-sp-convolution-filter scm-out scm-in scm-ir-f scm-ir-f-arguments scm-state)
   (SCM SCM SCM SCM SCM SCM)
   status-declare
   (declare
@@ -188,60 +188,6 @@
       (set scm-state (scm-from-sp-convolution-filter-state state))))
   (label exit
     (scm-from-status-return scm-state)))
-
-(define
-  (scm-sp-moving-average!
-    scm-out scm-in scm-prev scm-next scm-radius scm-in-start scm-in-count scm-out-start)
-  (SCM SCM SCM SCM SCM SCM SCM SCM SCM)
-  "start/end are indexes counted from 0"
-  status-declare
-  (declare
-    in sp-sample-t*
-    in-end sp-sample-t*
-    prev sp-sample-t*
-    prev-end sp-sample-t*
-    next sp-sample-t*
-    next-end sp-sample-t*
-    in-start sp-sample-count-t
-    in-count sp-sample-count-t
-    out-start sp-sample-count-t)
-  (set
-    in (scm->sp-samples scm-in)
-    in-end (+ (scm->sp-samples-length scm-in) in)
-    in-start
-    (if* (scm-is-undefined scm-in-start) 0
-      (scm->sp-sample-count scm-in-start))
-    in-count
-    (if* (scm-is-undefined scm-in-count) (- in-end in in-start)
-      (scm->sp-sample-count scm-in-count))
-    out-start
-    (if* (scm-is-undefined scm-out-start) 0
-      (scm->sp-sample-count scm-out-start)))
-  (if (scm-is-true scm-prev)
-    (set
-      prev (scm->sp-samples scm-prev)
-      prev-end (+ (scm->sp-samples-length scm-prev) prev))
-    (set
-      prev 0
-      prev-end 0))
-  (if (scm-is-true scm-next)
-    (set
-      next (scm->sp-samples scm-next)
-      next-end (+ (scm->sp-samples-length scm-next) next))
-    (set
-      next 0
-      next-end 0))
-  (status-require
-    (sp-moving-average
-      in
-      in-end
-      (+ in-start in)
-      (+ (+ in-start in-count) in)
-      prev
-      prev-end
-      next next-end (scm->sp-sample-count scm-radius) (+ out-start (scm->sp-samples scm-out))))
-  (label exit
-    (scm-from-status-return SCM-UNSPECIFIED)))
 
 (define (debug-display-sample-array a len) (void sp-sample-t* sp-sample-count-t)
   "display a sample array in one line"
@@ -449,7 +395,7 @@
     (return status)))
 
 (define
-  (scm-sp-fm-synth!
+  (scm-sp-fm-synth
     scm-out scm-out-start scm-channel-count scm-start scm-duration scm-config scm-state)
   (SCM SCM SCM SCM SCM SCM SCM SCM)
   status-declare
@@ -457,12 +403,14 @@
     channel-count sp-channel-count-t
     config-len sp-fm-synth-count-t
     config sp-fm-synth-operator-t*
+    duration sp-sample-count-t
     i sp-channel-count-t
     out (array sp-sample-t* sp-fm-synth-channel-limit)
     out-start sp-sample-count-t
     state sp-sample-count-t*)
   (set
     channel-count (scm->sp-channel-count scm-channel-count)
+    duration (scm->sp-sample-count scm-duration)
     out-start (scm->sp-sample-count scm-out-start)
     state
     (if* (scm-is-true scm-state) (scm->sp-sample-counts scm-state)
@@ -476,13 +424,84 @@
   (status-require (scm->sp-fm-synth-config scm-config channel-count &config-len &config))
   (status-require
     (sp-fm-synth
-      out
-      channel-count
-      (scm->sp-sample-count scm-start) (scm->sp-sample-count scm-duration) config-len config &state))
+      out channel-count (scm->sp-sample-count scm-start) duration config-len config &state))
   (if (not (scm-is-true scm-state))
     (set scm-state (scm-c-take-sample-counts state (* config-len channel-count))))
   (label exit
     (scm-from-status-return scm-state)))
+
+(define
+  (scm-sp-moving-average
+    scm-out scm-in scm-prev scm-next scm-radius scm-in-start scm-in-count scm-out-start)
+  (SCM SCM SCM SCM SCM SCM SCM SCM SCM)
+  "start/end are indexes counted from 0"
+  status-declare
+  (declare
+    in sp-sample-t*
+    in-end sp-sample-t*
+    prev sp-sample-t*
+    prev-end sp-sample-t*
+    next sp-sample-t*
+    next-end sp-sample-t*
+    in-start sp-sample-count-t
+    in-count sp-sample-count-t
+    out-start sp-sample-count-t)
+  (set
+    in (scm->sp-samples scm-in)
+    in-end (+ (scm->sp-samples-length scm-in) in)
+    in-start
+    (if* (scm-is-undefined scm-in-start) 0
+      (scm->sp-sample-count scm-in-start))
+    in-count
+    (if* (scm-is-undefined scm-in-count) (- in-end in in-start)
+      (scm->sp-sample-count scm-in-count))
+    out-start
+    (if* (scm-is-undefined scm-out-start) 0
+      (scm->sp-sample-count scm-out-start)))
+  (if (scm-is-true scm-prev)
+    (set
+      prev (scm->sp-samples scm-prev)
+      prev-end (+ (scm->sp-samples-length scm-prev) prev))
+    (set
+      prev 0
+      prev-end 0))
+  (if (scm-is-true scm-next)
+    (set
+      next (scm->sp-samples scm-next)
+      next-end (+ (scm->sp-samples-length scm-next) next))
+    (set
+      next 0
+      next-end 0))
+  (status-require
+    (sp-moving-average
+      in
+      in-end
+      (+ in-start in)
+      (+ (+ in-start in-count) in)
+      prev
+      prev-end
+      next next-end (scm->sp-sample-count scm-radius) (+ out-start (scm->sp-samples scm-out))))
+  (label exit
+    (scm-from-status-return SCM-UNSPECIFIED)))
+
+(pre-define (define-scm-sp-state-variable-filter suffix)
+  (define
+    ( (pre-concat scm-sp-state-variable-filter_ suffix)
+      scm-out scm-out-start scm-in scm-in-start scm-in-count scm-cutoff scm-q-factor scm-state)
+    (SCM SCM SCM SCM SCM SCM SCM SCM SCM)
+    ( (pre-concat sp-state-variable-filter_ suffix)
+      (+ (scm->sp-sample-count scm-out-start) (scm->sp-samples scm-out))
+      (+ (scm->sp-sample-count scm-in-start) (scm->sp-samples scm-in))
+      (scm->sp-sample-count scm-in-count)
+      (scm->sp-float scm-cutoff) (scm->sp-float scm-q-factor) (scm->sp-samples scm-state))
+    (return scm-state)))
+
+(define-scm-sp-state-variable-filter lp)
+(define-scm-sp-state-variable-filter hp)
+(define-scm-sp-state-variable-filter bp)
+(define-scm-sp-state-variable-filter br)
+(define-scm-sp-state-variable-filter peak)
+(define-scm-sp-state-variable-filter all)
 
 (define (sp-guile-init) void
   (declare
@@ -505,17 +524,59 @@
   (scm-c-module-define m "sp-file-mode-read-write" (scm-from-uint8 sp-file-mode-read-write))
   scm-c-define-procedure-c-init
   (scm-c-define-procedure-c
-    "sp-fm-synth!"
-    7 0 0 scm-sp-fm-synth! "out out-start channel-count start duration config state -> state")
+    "sp-state-variable-filter-lp"
+    8
+    0
+    0
+    scm-sp-state-variable-filter-lp
+    "out out-start in in-start in-count cutoff q-factor state -> unspecified")
   (scm-c-define-procedure-c
-    "sp-convolve!" 4 1 0 scm-sp-convolve! "out a b carryover [carryover-len] -> unspecified")
+    "sp-state-variable-filter-hp"
+    8
+    0
+    0
+    scm-sp-state-variable-filter-hp
+    "out out-start in in-start in-count cutoff q-factor state -> unspecified")
+  (scm-c-define-procedure-c
+    "sp-state-variable-filter-bp"
+    8
+    0
+    0
+    scm-sp-state-variable-filter-bp
+    "out out-start in in-start in-count cutoff q-factor state -> unspecified")
+  (scm-c-define-procedure-c
+    "sp-state-variable-filter-br"
+    8
+    0
+    0
+    scm-sp-state-variable-filter-br
+    "out out-start in in-start in-count cutoff q-factor state -> unspecified")
+  (scm-c-define-procedure-c
+    "sp-state-variable-filter-peak"
+    8
+    0
+    0
+    scm-sp-state-variable-filter-peak
+    "out out-start in in-start in-count cutoff q-factor state -> unspecified")
+  (scm-c-define-procedure-c
+    "sp-state-variable-filter-all"
+    8
+    0
+    0
+    scm-sp-state-variable-filter-all
+    "out out-start in in-start in-count cutoff q-factor state -> unspecified")
+  (scm-c-define-procedure-c
+    "sp-fm-synth"
+    7 0 0 scm-sp-fm-synth "out out-start channel-count start duration config state -> state")
+  (scm-c-define-procedure-c
+    "sp-convolve" 4 1 0 scm-sp-convolve "out a b carryover [carryover-len] -> unspecified")
   (scm-c-define-procedure-c "sp-window-blackman" 2 0 0 scm-sp-window-blackman "real width -> real")
   (scm-c-define-procedure-c
-    "sp-windowed-sinc-lp-hp!"
+    "sp-windowed-sinc-lp-hp"
     6
     0
     0
-    scm-sp-windowed-sinc-lp-hp!
+    scm-sp-windowed-sinc-lp-hp
     "out in cutoff transition is-high-pass state -> state
     samples samples real:0..0.5 real:0..0.5 boolean convolution-filter-state -> unspecified
     apply a windowed-sinc low-pass or high-pass filter to \"in\", write to \"out\" and return
@@ -523,14 +584,14 @@
     if state object is false, create a new state.
     cutoff and transition are as a fraction of the sampling-rate")
   (scm-c-define-procedure-c
-    "sp-windowed-sinc-bp-br!"
+    "sp-windowed-sinc-bp-br"
     8
     1
     1
-    scm-sp-windowed-sinc-bp-br!
+    scm-sp-windowed-sinc-bp-br
     "out in cutoff-l cutoff-h transition-l transition-h is-reject state in-start in-end out-start -> state
     samples samples real:0..0.5 real real:0..0.5 real boolean convolution-filter-state -> unspecified
-    like sp-windowed-sinc-lp-hp! but as a band-pass or band-reject filter.
+    like sp-windowed-sinc-lp-hp but as a band-pass or band-reject filter.
     if state is false then a new state object will be returned.
     optimised to become a low-pass or high-pass at the ends")
   (scm-c-define-procedure-c
@@ -552,20 +613,20 @@
     cutoff-l cutoff-h transition-l transition-h is-reject -> ir
     get an impulse response kernel for a band-pass or band-reject filter")
   (scm-c-define-procedure-c
-    "sp-convolution-filter!"
+    "sp-convolution-filter"
     5
     0
     0
-    scm-sp-convolution-filter!
+    scm-sp-convolution-filter
     "out in ir-f ir-f-arguments state -> state
      samples samples procedure list false/sp-convolution-filter-state -> sp-convolution-filter-state
      if state is false then a new state object will be returned")
   (scm-c-define-procedure-c
-    "sp-moving-average!"
+    "sp-moving-average"
     5
     3
     0
-    scm-sp-moving-average!
+    scm-sp-moving-average
     "out in previous next radius [in-start in-count out-start] -> unspecified
      samples samples samples samples integer [integer integer integer] -> unspecified")
   (scm-c-define-procedure-c "sp-fft" 1 0 0 scm-sp-fft "#(complex ...) -> #(complex ...)")

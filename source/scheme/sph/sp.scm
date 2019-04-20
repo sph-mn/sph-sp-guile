@@ -6,9 +6,8 @@
     sp-block-overlap
     sp-call-with-output-file
     sp-change-limiter
-    sp-convolution-filter!
+    sp-convolution-filter
     sp-convolve
-    sp-convolve!
     sp-fft
     sp-fft-resynth
     sp-ffti
@@ -32,13 +31,12 @@
     sp-file?
     sp-filter-bank
     sp-float-sum
-    sp-fm-synth!
-    sp-fm-synth-config-new
+    sp-fm-synth
     sp-fold-frames
     sp-fold-integers
     sp-grain-map
     sp-map-fold-integers
-    sp-moving-average!
+    sp-moving-average
     sp-pi
     sp-plot-samples
     sp-plot-samples->file
@@ -47,7 +45,9 @@
     sp-plot-spectrum->file
     sp-plot-spectrum-display-file
     sp-sample-counts-from-list
+    sp-sample-counts-length
     sp-sample-counts-new
+    sp-sample-counts?
     sp-sample-sum
     sp-samples->list
     sp-samples-absolute-max
@@ -82,10 +82,16 @@
     sp-set-unity-gain
     sp-sinc
     sp-spectrum
+    sp-state-variable-filter-all
+    sp-state-variable-filter-bp
+    sp-state-variable-filter-br
+    sp-state-variable-filter-hp
+    sp-state-variable-filter-lp
+    sp-state-variable-filter-peak
     sp-window-hann
-    sp-windowed-sinc-bp-br!
+    sp-windowed-sinc-bp-br
     sp-windowed-sinc-bp-br-ir
-    sp-windowed-sinc-lp-hp!
+    sp-windowed-sinc-lp-hp
     sp-windowed-sinc-lp-hp-ir
     sph-sp-description)
   (import
@@ -93,20 +99,22 @@
     (sph uniform-vector)
     (only (guile)
       call-with-output-file
-      load-extension
-      inexact->exact
-      make-list
-      f64vector-length
-      f64vector-set!
-      f64vector-ref
-      list->f64vector
-      f64vector->list
       f64vector?
-      make-f64vector
-      make-u32vector
+      f64vector-length
+      f64vector->list
+      f64vector-ref
+      f64vector-set!
+      inexact->exact
+      list->f64vector
       list->u32vector
+      load-extension
+      make-f64vector
+      make-list
+      make-u32vector
       system*
-      tmpnam)
+      tmpnam
+      u32vector?
+      u32vector-length)
     (only (rnrs sorting) list-sort)
     (only (sph list) fold-integers map-integers)
     (only (sph math) absolute-threshold differences)
@@ -124,8 +132,12 @@
   (define* (sp-samples-new size #:optional (value 0))
     (if (procedure? value) (f64vector-create size value) (make-f64vector size value)))
 
-  (define* (sp-sample-counts-new size #:optional (value 0)) (make-u32vector size value))
+  (define* (sp-sample-counts-new size #:optional (value 0))
+    (if (procedure? value) (u32vector-create size value) (make-u32vector size value)))
+
+  (define sp-sample-counts? u32vector?)
   (define sp-sample-counts-from-list list->u32vector)
+  (define sp-sample-counts-length u32vector-length)
   (define sp-pi (* 4 (atan 1)))
   (define sp-float-sum float-sum)
   (define sp-sample-sum float-sum)
@@ -211,13 +223,6 @@
      f :: integer any:custom ... -> (any:custom ...)
      fold over integers from 0 to count minus 1 with zero or more custom state variables"
     (let loop ((a 0) (b init)) (if (< a count) (loop (+ 1 a) (apply f a b)) b)))
-
-  (define* (sp-convolve a b #:optional carryover carryover-len)
-    (let
-      ( (result (sp-samples-copy-zero a))
-        (carryover
-          (if carryover (sp-samples-copy carryover) (sp-samples-new (- (sp-samples-length b) 1) 0))))
-      (sp-convolve! result a b carryover carryover-len) (pair result carryover)))
 
   (define (sp-window-hann offset size) (* 0.5 (- 1 (cos (/ (* 2 sp-pi offset) (- size 1))))))
 

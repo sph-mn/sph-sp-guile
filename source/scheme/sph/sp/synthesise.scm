@@ -111,7 +111,7 @@
      get a value for a repeating rectangular wave at offset t with given side durations a and b"
     (sp-rectangle t a b -1 1))
 
-  (define* (sp-triangle~ t #:optional (a 48000) (b 48000))
+  (define* (sp-triangle~ t #:optional (a 96000) (b 96000))
     "integer:sample-count ... -> real:sample
      return a sample for a triangular wave with center offsets a left and b right.
      creates saw waves if either a or b is 0"
@@ -275,7 +275,7 @@
         (sp-event-f-with-resolution resolution amplitudes
           get-noise
           (l (t start size output input state)
-            (sp-windowed-sinc-bp-br! output input
+            (sp-windowed-sinc-bp-br output input
               (cut-l t) (cut-h t) (trn-l t) (trn-h t) reject state start size start))
           (l (output-sample amp t) (* (amp t) output-sample)))
         #f)))
@@ -286,8 +286,8 @@
       (resolution 96)
       repeat-noise)
     "integer integer (sp-path ...) sp-path integer symbol [keys ...] -> seq-event
-     like sp-noise-event but using sp-cheap-filter!.
-     see sp-cheap-filter! for more details.
+     like sp-noise-event but using sp-cheap-filter.
+     see sp-cheap-filter for more details.
      type: symbol:low/high/band/peak/notch/all
      # keys
      noise: procedure:{-> sample}
@@ -301,7 +301,7 @@
         (sp-event-f-with-resolution resolution amplitudes
           get-noise
           (l (t start size output input state)
-            (sp-cheap-filter! type output
+            (sp-cheap-filter type output
               input (cutoff t)
               passes state
               #:q-factor q-factor #:in-start start #:in-count size #:out-start start #:unity-gain #t))
@@ -391,6 +391,13 @@
   (define seq-events-start (compose seq-event-start first))
   (define seq-events-end (l (a) (apply max (map seq-event-end a))))
 
+  (define-syntax-rule (seq-event-f-arguments time time-end offset size start end c)
+    (let
+      ( (e-time (if (< start time) (- time start) 0))
+        (e-offset (if (> start time) (- start time) 0))
+        (e-offset-right (if (> end time-end) 0 (- time-end end))))
+      (c e-time (+ offset e-offset) (- size e-offset e-offset-right))))
+
   (define* (seq-parallel time offset size output events)
     "integer integer integer (samples:channel ...) seq-events -> seq-events
      calls one or multiple functions that add to the given output block in parallel at event-defined times and sums result samples.
@@ -404,7 +411,7 @@
        ( (result (sp-block-new 1 96000))
          (events
            (seq-events-new*
-             (seq-event-new 10000 48000
+             (seq-event-new 10000 96000
                (lambda (time offset size output event)
                  (for-each
                    (lambda (output)
@@ -446,15 +453,13 @@
                 (loop
                   (pair
                     (future
-                      (let*
-                        ( (time-offset (if (> start time) (- start time) 0))
-                          (time-offset-right (if (< end time-end) (- time-end end) 0))
-                          (size (- size time-offset time-offset-right))
-                          (output (sp-block-new channels size)))
-                        (list (+ offset time-offset) size
-                          output
-                          ( (seq-event-data-f data) (- (+ time time-offset) start) 0
-                            size output event))))
+                      (seq-event-f-arguments time time-end
+                        start end
+                        offset size
+                        (l (time offset size)
+                          (let (output (sp-block-new channels size))
+                            (list offset size
+                              output ((seq-event-data-f data) time offset size output event))))))
                     results)
                   (tail rest)))))))))
 
@@ -468,15 +473,13 @@
             ( (event (first rest)) (data (seq-event-data event)) (start (seq-event-data-start data))
               (end (seq-event-data-end data)))
             (if (< time-end start) (append (reverse results) rest)
-              (if (> time end) (loop results (tail rest))
+              (if (<= end time) (loop results (tail rest))
                 (loop
                   (pair
-                    (let*
-                      ( (time-offset (if (> start time) (- start time) 0))
-                        (time-offset-right (if (< end time-end) (- time-end end) 0))
-                        (size (- size time-offset time-offset-right)))
-                      ( (seq-event-data-f data) (- (+ time time-offset) start)
-                        (+ offset time-offset) size output event))
+                    (seq-event-f-arguments time time-end
+                      offset size
+                      start end
+                      (l (time offset size) ((seq-event-data-f data) time offset size output event)))
                     results)
                   (tail rest)))))))))
 
@@ -558,50 +561,26 @@
   (define-syntax-rule (sp-fm-synth-event* start duration operator ...)
     (sp-fm-synth-event start duration (qq (operator ...))))
 
-  (define (sp-fm-synth-event start duration operators)
-    "for each operator it allows control of amplitude, wavelength and phase offset per channel.
-     operator config elements are (id modulator-of (amplitude-path ...) (wavelength-path ...) (phase-offset ...))
-     (sp-fm-synth-event* start duration
-       (1 0 (0.9) (2000) (0))
-       (4 1 (0.7) (3000) (0)))"
-    (define (evaluate time offset size output phases wavelengths amplitudes . modulators)
-      "-> (value . state)"
-      (let*
-        ( (modulator-output
-            (map
-              (l (a) (apply evaluate time 0 size (map (l a (sp-samples-new size)) amplitudes) a))
-              modulators))
-          (modulator-samples (map first modulator-output))
-          (phases
-            (apply map
-              (l (out phs wvl amp . mod)
-                (fold-integers size phs
-                  (l (index phs)
-                    (let*
-                      ( (t (+ time index)) (wvl (wvl t))
-                        (wvl
-                          (/ 96000 (apply + wvl (map (l (a) (* (sp-samples-ref a index) wvl)) mod))))
-                        (phs (sp-phase-float phs wvl 96000)))
-                      (sp-samples-set! out (+ offset index)
-                        (+ (sp-samples-ref out (+ offset index)) (* (amp t) (sp-sine-2~ phs))))
-                      phs))))
-              output phases wavelengths amplitudes modulator-samples)))
-        (pairs output phases wavelengths amplitudes (map tail modulator-output))))
-    (define (state-new carrier operators)
-      "used to create a list of nested lists used and updated by evaluate.
-       nested lists are state values for dependent modulators"
-      (apply
-        (l (carrier-id modulator-of amplitudes wavelengths phases)
-          (apply-values
-            (l (modulators operators)
-              (pairs phases (map sp-path-procedure-fast wavelengths)
-                (map sp-path-procedure-fast amplitudes)
-                (map (l (a) (state-new a operators)) modulators)))
-            (partition (l (a) (eqv? carrier-id (second a))) operators)))
-        carrier))
-    (seq-event-new start (+ start duration)
+  (define* (sp-fm-synth-config? a #:optional start duration)
+    (and (list? a) (every vector? a)
+      (every
+        (l (a)
+          (let ((amp (vector-ref a 1)) (wvl (vector-ref a 2)) (phs (vector-ref a 3)))
+            (and (integer? (vector-ref a 0)) (vector? amp)
+              (vector? wvl) (vector? phs)
+              (= (vector-length amp) (vector-length wvl) (vector-length phs))
+              (every sp-samples? (vector->list amp)) (every sp-sample-counts? (vector->list wvl))
+              (every integer? (vector->list phs))
+              (or (not duration)
+                (and
+                  (every (l (a) (<= (+ start duration) (sp-samples-length a))) (vector->list amp))
+                  (every (l (a) (<= (+ start duration) (sp-sample-counts-length a)))
+                    (vector->list wvl)))))))
+        a)))
+
+  (define (sp-fm-synth-event start end config)
+    (seq-event-new start end
       (l (time offset size output event)
         (seq-event-state-update event
-          (map (l (a) (tail (apply evaluate time offset size output a))) (seq-event-state event))))
-      (apply-values (l (carriers operators) (map (l (a) (state-new a operators)) carriers))
-        (partition (l (a) (zero? (second a))) operators)))))
+          (sp-fm-synth output offset (length output) time size config (seq-event-state event))))
+      #f)))

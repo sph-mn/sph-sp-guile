@@ -29,13 +29,16 @@
   } else { \
     return ((scm_from_status_error(status))); \
   }
-enum { sp_status_id_missing_argument };
+enum { sp_status_id_missing_argument,
+  sp_status_id_argument_size_insufficient };
 /** get the description if available for a status */
 uint8_t* sp_guile_status_description(status_t a) {
   char* b;
   if (!strcmp(status_group_sp_guile, (a.group))) {
     if (sp_status_id_missing_argument == a.id) {
       b = "missing argument";
+    } else if (sp_status_id_argument_size_insufficient == a.id) {
+      b = "argument size insufficient";
     } else {
       b = "";
     };
@@ -50,6 +53,8 @@ uint8_t* sp_guile_status_name(status_t a) {
   if (!strcmp(status_group_sp_guile, (a.group))) {
     if (sp_status_id_missing_argument == a.id) {
       b = "missing-argument";
+    } else if (sp_status_id_argument_size_insufficient == a.id) {
+      b = "argument-size-insufficient";
     } else {
       b = "unknown";
     };
