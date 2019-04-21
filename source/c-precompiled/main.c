@@ -244,6 +244,41 @@ exit:
 };
 SCM scm_sp_window_blackman(SCM a, SCM width) { scm_from_sp_float((sp_window_blackman((scm_to_sp_float(a)), (scm_to_sp_sample_count(width))))); };
 void scm_sp_convolution_filter_state_finalize(SCM a) { sp_convolution_filter_state_free((scm_to_sp_convolution_filter_state(a))); };
+/** start/end are indexes counted from 0 */
+SCM scm_sp_moving_average(SCM scm_out, SCM scm_in, SCM scm_prev, SCM scm_next, SCM scm_radius, SCM scm_in_start, SCM scm_in_count, SCM scm_out_start) {
+  status_declare;
+  sp_sample_t* in;
+  sp_sample_t* in_end;
+  sp_sample_t* prev;
+  sp_sample_t* prev_end;
+  sp_sample_t* next;
+  sp_sample_t* next_end;
+  sp_sample_count_t in_start;
+  sp_sample_count_t in_count;
+  sp_sample_count_t out_start;
+  in = scm_to_sp_samples(scm_in);
+  in_end = (scm_to_sp_samples_length(scm_in) + in);
+  in_start = (scm_is_undefined(scm_in_start) ? 0 : scm_to_sp_sample_count(scm_in_start));
+  in_count = (scm_is_undefined(scm_in_count) ? (in_end - in - in_start) : scm_to_sp_sample_count(scm_in_count));
+  out_start = (scm_is_undefined(scm_out_start) ? 0 : scm_to_sp_sample_count(scm_out_start));
+  if (scm_is_true(scm_prev)) {
+    prev = scm_to_sp_samples(scm_prev);
+    prev_end = (scm_to_sp_samples_length(scm_prev) + prev);
+  } else {
+    prev = 0;
+    prev_end = 0;
+  };
+  if (scm_is_true(scm_next)) {
+    next = scm_to_sp_samples(scm_next);
+    next_end = (scm_to_sp_samples_length(scm_next) + next);
+  } else {
+    next = 0;
+    next_end = 0;
+  };
+  status_require((sp_moving_average(in, in_end, (in_start + in), ((in_start + in_count) + in), prev, prev_end, next, next_end, (scm_to_sp_sample_count(scm_radius)), (out_start + scm_to_sp_samples(scm_out)))));
+exit:
+  scm_from_status_return(SCM_UNSPECIFIED);
+};
 /** memory will be managed by the guile garbage collector */
 status_t scm_to_sp_fm_synth_config(SCM scm_config, sp_channel_count_t channel_count, sp_fm_synth_count_t* config_len, sp_fm_synth_operator_t** config) {
   status_declare;
@@ -298,40 +333,60 @@ SCM scm_sp_fm_synth(SCM scm_out, SCM scm_out_start, SCM scm_channel_count, SCM s
 exit:
   scm_from_status_return(scm_state);
 };
-/** start/end are indexes counted from 0 */
-SCM scm_sp_moving_average(SCM scm_out, SCM scm_in, SCM scm_prev, SCM scm_next, SCM scm_radius, SCM scm_in_start, SCM scm_in_count, SCM scm_out_start) {
+/** memory will be managed by the guile garbage collector */
+status_t scm_to_sp_asynth_config(SCM scm_config, sp_channel_count_t channel_count, sp_asynth_count_t* config_len, sp_asynth_partial_t** config) {
   status_declare;
-  sp_sample_t* in;
-  sp_sample_t* in_end;
-  sp_sample_t* prev;
-  sp_sample_t* prev_end;
-  sp_sample_t* next;
-  sp_sample_t* next_end;
-  sp_sample_count_t in_start;
-  sp_sample_count_t in_count;
-  sp_sample_count_t out_start;
-  in = scm_to_sp_samples(scm_in);
-  in_end = (scm_to_sp_samples_length(scm_in) + in);
-  in_start = (scm_is_undefined(scm_in_start) ? 0 : scm_to_sp_sample_count(scm_in_start));
-  in_count = (scm_is_undefined(scm_in_count) ? (in_end - in - in_start) : scm_to_sp_sample_count(scm_in_count));
-  out_start = (scm_is_undefined(scm_out_start) ? 0 : scm_to_sp_sample_count(scm_out_start));
-  if (scm_is_true(scm_prev)) {
-    prev = scm_to_sp_samples(scm_prev);
-    prev_end = (scm_to_sp_samples_length(scm_prev) + prev);
-  } else {
-    prev = 0;
-    prev_end = 0;
+  sp_channel_count_t channel_i;
+  sp_sample_count_t c_len;
+  sp_asynth_partial_t* c;
+  sp_asynth_partial_t* prt;
+  sp_asynth_count_t i;
+  SCM scm_prt;
+  c_len = scm_to_sp_asynth_count((scm_length(scm_config)));
+  c = scm_gc_malloc_pointerless((c_len * sizeof(sp_asynth_partial_t)), "sp-asynth-config");
+  if (!c) {
+    status_set_both_goto(sp_status_group_sp, sp_status_id_memory);
   };
-  if (scm_is_true(scm_next)) {
-    next = scm_to_sp_samples(scm_next);
-    next_end = (scm_to_sp_samples_length(scm_next) + next);
-  } else {
-    next = 0;
-    next_end = 0;
+  for (i = 0; (i < c_len); i = (1 + i), scm_config = scm_tail(scm_config)) {
+    scm_prt = scm_first(scm_config);
+    prt = (c + i);
+    prt->start = scm_to_sp_sample_count((scm_c_vector_ref(scm_prt, 0)));
+    prt->end = scm_to_sp_sample_count((scm_c_vector_ref(scm_prt, 1)));
+    for (channel_i = 0; (channel_i < channel_count); channel_i = (1 + channel_i)) {
+      (prt->amplitude)[channel_i] = scm_to_sp_samples((scm_c_vector_ref((scm_c_vector_ref(scm_prt, 2)), channel_i)));
+      (prt->wavelength)[channel_i] = scm_to_sp_sample_counts((scm_c_vector_ref((scm_c_vector_ref(scm_prt, 3)), channel_i)));
+      (prt->phase_offset)[channel_i] = scm_to_sp_sample_count((scm_c_vector_ref((scm_c_vector_ref(scm_prt, 4)), channel_i)));
+    };
   };
-  status_require((sp_moving_average(in, in_end, (in_start + in), ((in_start + in_count) + in), prev, prev_end, next, next_end, (scm_to_sp_sample_count(scm_radius)), (out_start + scm_to_sp_samples(scm_out)))));
+  *config_len = c_len;
+  *config = c;
 exit:
-  scm_from_status_return(SCM_UNSPECIFIED);
+  return (status);
+};
+SCM scm_sp_asynth(SCM scm_out, SCM scm_out_start, SCM scm_channel_count, SCM scm_start, SCM scm_duration, SCM scm_config, SCM scm_state) {
+  status_declare;
+  sp_channel_count_t channel_count;
+  sp_asynth_count_t config_len;
+  sp_asynth_partial_t* config;
+  sp_sample_count_t duration;
+  sp_channel_count_t i;
+  sp_sample_t* out[sp_asynth_channel_limit];
+  sp_sample_count_t out_start;
+  sp_sample_count_t* state;
+  channel_count = scm_to_sp_channel_count(scm_channel_count);
+  duration = scm_to_sp_sample_count(scm_duration);
+  out_start = scm_to_sp_sample_count(scm_out_start);
+  state = (scm_is_true(scm_state) ? scm_to_sp_sample_counts(scm_state) : 0);
+  for (i = 0; (i < channel_count); i = (1 + i), scm_out = scm_tail(scm_out)) {
+    out[i] = (out_start + scm_to_sp_samples((scm_first(scm_out))));
+  };
+  status_require((scm_to_sp_asynth_config(scm_config, channel_count, (&config_len), (&config))));
+  status_require((sp_asynth(out, channel_count, (scm_to_sp_sample_count(scm_start)), duration, config_len, config, (&state))));
+  if (!scm_is_true(scm_state)) {
+    scm_state = scm_c_take_sample_counts(state, (config_len * channel_count));
+  };
+exit:
+  scm_from_status_return(scm_state);
 };
 #define define_scm_sp_state_variable_filter(suffix) \
   SCM scm_sp_state_variable_filter_##suffix(SCM scm_out, SCM scm_out_start, SCM scm_in, SCM scm_in_start, SCM scm_in_count, SCM scm_cutoff, SCM scm_q_factor, SCM scm_state) { \
@@ -366,6 +421,7 @@ void sp_guile_init() {
   scm_c_define_procedure_c("sp-state-variable-filter-peak", 8, 0, 0, scm_sp_state_variable_filter_peak, ("out out-start in in-start in-count cutoff q-factor state -> unspecified"));
   scm_c_define_procedure_c("sp-state-variable-filter-all", 8, 0, 0, scm_sp_state_variable_filter_all, ("out out-start in in-start in-count cutoff q-factor state -> unspecified"));
   scm_c_define_procedure_c("sp-fm-synth", 7, 0, 0, scm_sp_fm_synth, ("out out-start channel-count start duration config state -> state"));
+  scm_c_define_procedure_c("sp-asynth", 7, 0, 0, scm_sp_asynth, ("out out-start channel-count start duration config state -> state"));
   scm_c_define_procedure_c("sp-convolve", 4, 1, 0, scm_sp_convolve, ("out a b carryover [carryover-len] -> unspecified"));
   scm_c_define_procedure_c("sp-window-blackman", 2, 0, 0, scm_sp_window_blackman, ("real width -> real"));
   scm_c_define_procedure_c("sp-windowed-sinc-lp-hp", 6, 0, 0, scm_sp_windowed_sinc_lp_hp, ("out in cutoff transition is-high-pass state -> state\n    samples samples real:0..0.5 real:0..0.5 boolean convolution-filter-state -> unspecified\n    apply a windowed-sinc low-pass or high-pass filter to \"in\", write to \"out\" and return\n    an updated state object.\n    if state object is false, create a new state.\n    cutoff and transition are as a fraction of the sampling-rate"));

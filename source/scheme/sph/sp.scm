@@ -2,6 +2,7 @@
   (export
     f64-nearly-equal?
     f64vector-sum
+    sp-asynth
     sp-block-new
     sp-block-overlap
     sp-call-with-output-file

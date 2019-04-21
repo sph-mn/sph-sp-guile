@@ -9,6 +9,7 @@
 #define scm_from_sp_float(a) scm_from_double(a)
 #define scm_to_sp_channel_count(a) scm_to_uint8(a)
 #define scm_to_sp_fm_synth_count(a) scm_to_uint8(a)
+#define scm_to_sp_asynth_count(a) scm_to_uint16(a)
 #define scm_to_sp_sample_rate(a) scm_to_uint32(a)
 #define scm_to_sp_sample_count(a) scm_to_uint32(a)
 #define scm_to_sp_float(a) scm_to_double(a)

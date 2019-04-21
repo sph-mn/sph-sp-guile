@@ -356,6 +356,60 @@
 (define (scm-sp-convolution-filter-state-finalize a) (void SCM)
   (sp-convolution-filter-state-free (scm->sp-convolution-filter-state a)))
 
+(define
+  (scm-sp-moving-average
+    scm-out scm-in scm-prev scm-next scm-radius scm-in-start scm-in-count scm-out-start)
+  (SCM SCM SCM SCM SCM SCM SCM SCM SCM)
+  "start/end are indexes counted from 0"
+  status-declare
+  (declare
+    in sp-sample-t*
+    in-end sp-sample-t*
+    prev sp-sample-t*
+    prev-end sp-sample-t*
+    next sp-sample-t*
+    next-end sp-sample-t*
+    in-start sp-sample-count-t
+    in-count sp-sample-count-t
+    out-start sp-sample-count-t)
+  (set
+    in (scm->sp-samples scm-in)
+    in-end (+ (scm->sp-samples-length scm-in) in)
+    in-start
+    (if* (scm-is-undefined scm-in-start) 0
+      (scm->sp-sample-count scm-in-start))
+    in-count
+    (if* (scm-is-undefined scm-in-count) (- in-end in in-start)
+      (scm->sp-sample-count scm-in-count))
+    out-start
+    (if* (scm-is-undefined scm-out-start) 0
+      (scm->sp-sample-count scm-out-start)))
+  (if (scm-is-true scm-prev)
+    (set
+      prev (scm->sp-samples scm-prev)
+      prev-end (+ (scm->sp-samples-length scm-prev) prev))
+    (set
+      prev 0
+      prev-end 0))
+  (if (scm-is-true scm-next)
+    (set
+      next (scm->sp-samples scm-next)
+      next-end (+ (scm->sp-samples-length scm-next) next))
+    (set
+      next 0
+      next-end 0))
+  (status-require
+    (sp-moving-average
+      in
+      in-end
+      (+ in-start in)
+      (+ (+ in-start in-count) in)
+      prev
+      prev-end
+      next next-end (scm->sp-sample-count scm-radius) (+ out-start (scm->sp-samples scm-out))))
+  (label exit
+    (scm-from-status-return SCM-UNSPECIFIED)))
+
 (define (scm->sp-fm-synth-config scm-config channel-count config-len config)
   (status-t SCM sp-channel-count-t sp-fm-synth-count-t* sp-fm-synth-operator-t**)
   "memory will be managed by the guile garbage collector"
@@ -430,59 +484,79 @@
   (label exit
     (scm-from-status-return scm-state)))
 
-(define
-  (scm-sp-moving-average
-    scm-out scm-in scm-prev scm-next scm-radius scm-in-start scm-in-count scm-out-start)
-  (SCM SCM SCM SCM SCM SCM SCM SCM SCM)
-  "start/end are indexes counted from 0"
+(define (scm->sp-asynth-config scm-config channel-count config-len config)
+  (status-t SCM sp-channel-count-t sp-asynth-count-t* sp-asynth-partial-t**)
+  "memory will be managed by the guile garbage collector"
   status-declare
   (declare
-    in sp-sample-t*
-    in-end sp-sample-t*
-    prev sp-sample-t*
-    prev-end sp-sample-t*
-    next sp-sample-t*
-    next-end sp-sample-t*
-    in-start sp-sample-count-t
-    in-count sp-sample-count-t
-    out-start sp-sample-count-t)
+    channel-i sp-channel-count-t
+    c-len sp-sample-count-t
+    c sp-asynth-partial-t*
+    prt sp-asynth-partial-t*
+    i sp-asynth-count-t
+    scm-prt SCM)
   (set
-    in (scm->sp-samples scm-in)
-    in-end (+ (scm->sp-samples-length scm-in) in)
-    in-start
-    (if* (scm-is-undefined scm-in-start) 0
-      (scm->sp-sample-count scm-in-start))
-    in-count
-    (if* (scm-is-undefined scm-in-count) (- in-end in in-start)
-      (scm->sp-sample-count scm-in-count))
-    out-start
-    (if* (scm-is-undefined scm-out-start) 0
-      (scm->sp-sample-count scm-out-start)))
-  (if (scm-is-true scm-prev)
+    c-len (scm->sp-asynth-count (scm-length scm-config))
+    c (scm-gc-malloc-pointerless (* c-len (sizeof sp-asynth-partial-t)) "sp-asynth-config"))
+  (if (not c) (status-set-both-goto sp-status-group-sp sp-status-id-memory))
+  (for
+    ( (set i 0) (< i c-len)
+      (set
+        i (+ 1 i)
+        scm-config (scm-tail scm-config)))
     (set
-      prev (scm->sp-samples scm-prev)
-      prev-end (+ (scm->sp-samples-length scm-prev) prev))
-    (set
-      prev 0
-      prev-end 0))
-  (if (scm-is-true scm-next)
-    (set
-      next (scm->sp-samples scm-next)
-      next-end (+ (scm->sp-samples-length scm-next) next))
-    (set
-      next 0
-      next-end 0))
-  (status-require
-    (sp-moving-average
-      in
-      in-end
-      (+ in-start in)
-      (+ (+ in-start in-count) in)
-      prev
-      prev-end
-      next next-end (scm->sp-sample-count scm-radius) (+ out-start (scm->sp-samples scm-out))))
+      scm-prt (scm-first scm-config)
+      prt (+ c i)
+      prt:start (scm->sp-sample-count (scm-c-vector-ref scm-prt 0))
+      prt:end (scm->sp-sample-count (scm-c-vector-ref scm-prt 1)))
+    (for ((set channel-i 0) (< channel-i channel-count) (set channel-i (+ 1 channel-i)))
+      (set
+        (array-get prt:amplitude channel-i)
+        (scm->sp-samples (scm-c-vector-ref (scm-c-vector-ref scm-prt 2) channel-i))
+        (array-get prt:wavelength channel-i)
+        (scm->sp-sample-counts (scm-c-vector-ref (scm-c-vector-ref scm-prt 3) channel-i))
+        (array-get prt:phase-offset channel-i)
+        (scm->sp-sample-count (scm-c-vector-ref (scm-c-vector-ref scm-prt 4) channel-i)))))
+  (set
+    *config-len c-len
+    *config c)
   (label exit
-    (scm-from-status-return SCM-UNSPECIFIED)))
+    (return status)))
+
+(define
+  (scm-sp-asynth
+    scm-out scm-out-start scm-channel-count scm-start scm-duration scm-config scm-state)
+  (SCM SCM SCM SCM SCM SCM SCM SCM)
+  status-declare
+  (declare
+    channel-count sp-channel-count-t
+    config-len sp-asynth-count-t
+    config sp-asynth-partial-t*
+    duration sp-sample-count-t
+    i sp-channel-count-t
+    out (array sp-sample-t* sp-asynth-channel-limit)
+    out-start sp-sample-count-t
+    state sp-sample-count-t*)
+  (set
+    channel-count (scm->sp-channel-count scm-channel-count)
+    duration (scm->sp-sample-count scm-duration)
+    out-start (scm->sp-sample-count scm-out-start)
+    state
+    (if* (scm-is-true scm-state) (scm->sp-sample-counts scm-state)
+      0))
+  (for
+    ( (set i 0) (< i channel-count)
+      (set
+        i (+ 1 i)
+        scm-out (scm-tail scm-out)))
+    (set (array-get out i) (+ out-start (scm->sp-samples (scm-first scm-out)))))
+  (status-require (scm->sp-asynth-config scm-config channel-count &config-len &config))
+  (status-require
+    (sp-asynth out channel-count (scm->sp-sample-count scm-start) duration config-len config &state))
+  (if (not (scm-is-true scm-state))
+    (set scm-state (scm-c-take-sample-counts state (* config-len channel-count))))
+  (label exit
+    (scm-from-status-return scm-state)))
 
 (pre-define (define-scm-sp-state-variable-filter suffix)
   (define
@@ -568,6 +642,9 @@
   (scm-c-define-procedure-c
     "sp-fm-synth"
     7 0 0 scm-sp-fm-synth "out out-start channel-count start duration config state -> state")
+  (scm-c-define-procedure-c
+    "sp-asynth"
+    7 0 0 scm-sp-asynth "out out-start channel-count start duration config state -> state")
   (scm-c-define-procedure-c
     "sp-convolve" 4 1 0 scm-sp-convolve "out a b carryover [carryover-len] -> unspecified")
   (scm-c-define-procedure-c "sp-window-blackman" 2 0 0 scm-sp-window-blackman "real width -> real")

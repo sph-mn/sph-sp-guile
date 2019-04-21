@@ -20,6 +20,8 @@
     seq-events-new
     seq-events-start
     seq-parallel
+    sp-asynth-event
+    sp-asynth-event*
     sp-block->file
     sp-blocks->file
     sp-cheap-noise-event
@@ -583,4 +585,33 @@
       (l (time offset size output event)
         (seq-event-state-update event
           (sp-fm-synth output offset (length output) time size config (seq-event-state event))))
+      #f))
+
+  (define-syntax-rule
+    (sp-asynth-event* start duration (p-start p-end (amp ...) (wvl ...) (phs ...)) ...)
+    (sp-asynth-event start duration
+      (list (vector p-start p-end (vector amp ...) (vector wvl ...) (vector phs ...)) ...)))
+
+  (define* (sp-asynth-config? a #:optional start duration)
+    (and (list? a) (every vector? a)
+      (every
+        (l (a)
+          (let ((amp (vector-ref a 2)) (wvl (vector-ref a 3)) (phs (vector-ref a 4)))
+            (and (integer? (vector-ref a 0)) (integer? (vector-ref a 1))
+              (vector? amp) (vector? wvl)
+              (vector? phs) (= (vector-length amp) (vector-length wvl) (vector-length phs))
+              (every sp-samples? (vector->list amp)) (every sp-sample-counts? (vector->list wvl))
+              (every integer? (vector->list phs))
+              (or (not duration)
+                (and
+                  (every (l (a) (<= (+ start duration) (sp-samples-length a))) (vector->list amp))
+                  (every (l (a) (<= (+ start duration) (sp-sample-counts-length a)))
+                    (vector->list wvl)))))))
+        a)))
+
+  (define (sp-asynth-event start end config)
+    (seq-event-new start end
+      (l (time offset size output event)
+        (seq-event-state-update event
+          (sp-asynth output offset (length output) time size config (seq-event-state event))))
       #f)))

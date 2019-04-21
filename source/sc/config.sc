@@ -10,6 +10,7 @@
   (scm-from-sp-float a) (scm-from-double a)
   (scm->sp-channel-count a) (scm->uint8 a)
   (scm->sp-fm-synth-count a) (scm->uint8 a)
+  (scm->sp-asynth-count a) (scm->uint16 a)
   (scm->sp-sample-rate a) (scm->uint32 a)
   (scm->sp-sample-count a) (scm->uint32 a)
   (scm->sp-float a) (scm->double a))
