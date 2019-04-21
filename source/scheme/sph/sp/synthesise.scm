@@ -35,6 +35,8 @@
     sp-path*
     sp-path-procedure
     sp-path-procedure-fast
+    sp-path-sample-counts
+    sp-path-samples
     sp-phase
     sp-phase-float
     sp-precompiled-event
@@ -142,7 +144,7 @@
 
   (define* (sp-path a #:key (dimension 1) deep mapper randomise repeat reverse scale shift stretch)
     "spline-path/spline-path-config/number/point [keys ...] -> spline-path
-     create a new path or modify an existing one.
+     create a new spline-path or modify an existing one.
      combines spline-path-new, spline-path-modify and spline-path-constant.
      if #:dimension is a number then only the point value of that dimension is returned as a single number. the default is one"
     (let
@@ -178,6 +180,17 @@
             (else a)))
         (path-procedure (if (procedure? path) path (spline-path->procedure-fast path))))
       (if dimension (compose (l (point) (list-ref point dimension)) path-procedure) path-procedure)))
+
+  (define* (sp-path-sample-counts a end #:optional (start 0))
+    "like sp-path but returns an array of sample count integer values.
+     decimal values are rounded"
+    (if (sp-sample-counts? a) a
+      (let (a (sp-path-procedure a))
+        (sp-sample-counts-new (- end start) (l (t) (round (a (+ start t))))))))
+
+  (define* (sp-path-samples a end #:optional (start 0)) "like sp-path but returns a sample array"
+    (if (sp-samples? a) a
+      (let (a (sp-path-procedure a)) (sp-samples-new (- end start) (l (t) (a (+ start t)))))))
 
   (define (sp-event-f-with-resolution resolution amplitudes input-f block-f output-map-f)
     "helper that calls f with a block-count and a buffer where it can write to.
@@ -560,8 +573,9 @@
             event)))
       (l* (start #:optional end) (seq-event-new start (or end (+ start events-end)) event-f))))
 
-  (define-syntax-rule (sp-fm-synth-event* start duration operator ...)
-    (sp-fm-synth-event start duration (qq (operator ...))))
+  (define-syntax-rule (sp-fm-synth-event* start end (modifies (amp ...) (wvl ...) (phs ...)) ...)
+    (sp-fm-synth-event start end
+      (list (vector modifies (vector amp ...) (vector wvl ...) (vector phs ...)) ...)))
 
   (define* (sp-fm-synth-config? a #:optional start duration)
     (and (list? a) (every vector? a)
@@ -581,15 +595,26 @@
         a)))
 
   (define (sp-fm-synth-event start end config)
-    (seq-event-new start end
-      (l (time offset size output event)
-        (seq-event-state-update event
-          (sp-fm-synth output offset (length output) time size config (seq-event-state event))))
-      #f))
+    (define (prepare-config a start end) "convert sp-paths to arrays"
+      (let*
+        ( (end (- end start))
+          (a
+            (map-apply
+              (l (modifies amp wvl phs)
+                (vector modifies (vector-map (l (a) (sp-path-samples a end 0)) amp)
+                  (vector-map (l (a) (sp-path-sample-counts a end 0)) wvl) phs))
+              (map vector->list a))))
+        (if (sp-fm-synth-config? a) a (raise (q invalid-fm-synth-config)))))
+    (let (config (prepare-config config start end))
+      (seq-event-new start end
+        (l (time offset size output event)
+          (seq-event-state-update event
+            (sp-fm-synth output offset (length output) time size config (seq-event-state event))))
+        #f)))
 
   (define-syntax-rule
-    (sp-asynth-event* start duration (p-start p-end (amp ...) (wvl ...) (phs ...)) ...)
-    (sp-asynth-event start duration
+    (sp-asynth-event* start end (p-start p-end (amp ...) (wvl ...) (phs ...)) ...)
+    (sp-asynth-event start end
       (list (vector p-start p-end (vector amp ...) (vector wvl ...) (vector phs ...)) ...)))
 
   (define* (sp-asynth-config? a #:optional start duration)
@@ -610,8 +635,20 @@
         a)))
 
   (define (sp-asynth-event start end config)
-    (seq-event-new start end
-      (l (time offset size output event)
-        (seq-event-state-update event
-          (sp-asynth output offset (length output) time size config (seq-event-state event))))
-      #f)))
+    (define (prepare-config a start end) "convert sp-paths to arrays"
+      (let*
+        ( (end (- end start))
+          (a
+            (map-apply
+              (l (start end amp wvl phs)
+                (vector start end
+                  (vector-map (l (a) (sp-path-samples a end 0)) amp)
+                  (vector-map (l (a) (sp-path-sample-counts a end 0)) wvl) phs))
+              (map vector->list a))))
+        (if (sp-asynth-config? a) a (raise (q invalid-asynth-config)))))
+    (let (config (prepare-config config start end))
+      (seq-event-new start end
+        (l (time offset size output event)
+          (seq-event-state-update event
+            (sp-asynth output offset (length output) time size config (seq-event-state event))))
+        #f))))
