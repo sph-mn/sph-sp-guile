@@ -55,15 +55,14 @@ installed files
 ## (sph sp)
 basics
 ~~~
-f32vector-sum :: a [b c] ->
 f64-nearly-equal? :: a b c ->
 f64vector-sum :: a [b c] ->
+sp-asynth :: a b c d e f g ->
 sp-block-new :: channels size ->
 sp-block-overlap :: a b [overlap-factor] ->
 sp-call-with-output-file :: path channels sample-rate f ->
-sp-convolution-filter! :: a b c d e ->
-sp-convolve :: a b [carryover carryover-len] ->
-sp-convolve! :: a b c d [e] ->
+sp-convolution-filter :: a b c d e ->
+sp-convolve :: a b c d [e] ->
 sp-fft :: a ->
 sp-fft-resynth :: f a ->
 sp-ffti :: a ->
@@ -85,11 +84,12 @@ sp-file-read :: a b ->
 sp-file-sample-rate :: a ->
 sp-file-write :: a b c ->
 sp-float-sum :: a ... ->
+sp-fm-synth :: a b c d e f g ->
 sp-fold-frames :: f input frame-size overlap-factor custom ... ->
 sp-fold-integers :: count f init ... ->
 sp-grain-map :: input count f state ->
 sp-map-fold-integers :: count f custom ... ->
-sp-moving-average! :: a b c d e [f g h] ->
+sp-moving-average :: a b c d e [f g h] ->
 sp-pi
 sp-plot-samples :: a display-args ... ->
 sp-plot-samples->file :: a path ->
@@ -97,6 +97,10 @@ sp-plot-samples-display-file :: file-path #:type #:color ->
 sp-plot-spectrum :: a ->
 sp-plot-spectrum->file :: a path ->
 sp-plot-spectrum-display-file :: path ->
+sp-sample-counts-from-list :: elts ->
+sp-sample-counts-length :: v ->
+sp-sample-counts-new :: size [value] ->
+sp-sample-counts? :: obj ->
 sp-sample-sum :: a ... ->
 sp-samples->list :: v ->
 sp-samples-absolute-max :: in [in-start in-count] ->
@@ -115,7 +119,7 @@ sp-samples-map-with :: f variable a ... ->
 sp-samples-map-with! :: f variable a ... ->
 sp-samples-map-with-index :: f a b ... ->
 sp-samples-multiply :: a factor ->
-sp-samples-new :: length [value] ->
+sp-samples-new :: size [value] ->
 sp-samples-passthrough :: out in [in-start in-count out-start] ->
 sp-samples-ref :: v i ->
 sp-samples-set! :: v i x ->
@@ -127,10 +131,16 @@ sp-scheduler :: additions output-size state ->
 sp-set-unity-gain :: out in in-start in-count out-start ->
 sp-sinc :: a ->
 sp-spectrum :: a ->
+sp-state-variable-filter-all :: a b c d e f g h ->
+sp-state-variable-filter-bp :: a b c d e f g h ->
+sp-state-variable-filter-br :: a b c d e f g h ->
+sp-state-variable-filter-hp :: a b c d e f g h ->
+sp-state-variable-filter-lp :: a b c d e f g h ->
+sp-state-variable-filter-peak :: a b c d e f g h ->
 sp-window-hann :: offset size ->
-sp-windowed-sinc-bp-br! :: a b c d e f g h [i] j ... ->
+sp-windowed-sinc-bp-br :: a b c d e f g h [i] j ... ->
 sp-windowed-sinc-bp-br-ir :: a b c d e ->
-sp-windowed-sinc-lp-hp! :: a b c d e f ->
+sp-windowed-sinc-lp-hp :: a b c d e f ->
 sp-windowed-sinc-lp-hp-ir :: a b c ->
 ~~~
 
@@ -157,21 +167,30 @@ seq-events-from-list :: a ->
 seq-events-new :: a ... ->
 seq-events-start :: args ... ->
 seq-parallel :: time offset size output events ->
+sp-asynth-event :: start end config ->
+sp-asynth-event* :: start end (p-start p-end (amp ...) (wvl ...) (phs ...)) ...
 sp-block->file :: a path sample-rate [channels] ->
 sp-blocks->file :: a path sample-rate [channels] ->
 sp-cheap-noise-event :: start end amplitudes cutoff passes type #:q-factor #:noise #:resolution #:repeat-noise ->
 sp-clip~ :: a ->
 sp-events->block :: channels events [start-offset] ->
+sp-fm-synth-event :: start end config ->
+sp-fm-synth-event* :: start end (modifies (amp ...) (wvl ...) (phs ...)) ...
 sp-noise-event :: start end amplitudes cut-l cut-h #:noise #:trn-l #:trn-h #:reject #:resolution #:repeat-noise ->
 sp-noise-uniform~ :: [state] ->
 sp-path :: a #:dimension #:deep #:mapper #:randomise #:repeat #:reverse #:scale #:shift #:stretch ->
-sp-path->procedure :: a ->
+sp-path-procedure :: a ->
+sp-path-procedure-fast :: a #:dimension ->
+sp-path-sample-counts :: a end [start] ->
+sp-path-samples :: a end [start] ->
 sp-phase :: y change phase-size ->
+sp-phase-float :: y change phase-size ->
 sp-precompiled-event :: channels events ->
 sp-rectangle :: t width-a width-b min-value max-value ->
 sp-rectangle~ :: t a b ->
 sp-sawtooth~ :: t [wavelength] ->
-sp-sine~ :: t [wavelength] ->
+sp-sine-2~ :: t [wavelength] ->
+sp-sine~ :: t ->
 sp-square~ :: t [wavelength] ->
 sp-triangle :: t a b height ->
 sp-triangle~ :: t [a b] ->
@@ -185,16 +204,12 @@ sp-asymmetric-moving :: f current-value width state ->
 sp-asymmetric-moving-average :: current-value width state ->
 sp-asymmetric-moving-median :: current-value width state ->
 sp-asymmetric-moving-out :: f current-value width state ->
-sp-cheap-filter! :: type out in cutoff passes state #:q-factor #:in-start #:in-count #:out-start #:unity-gain ->
-sp-filter! :: out in cutoff-l cutoff-h transition-l transition-h is-reject state ->
-sp-moving-average :: in prev next radius [in-start in-count out-start] ->
-sp-multipass! :: f out in passes state in-start in-count out-start ->
-sp-multipass-fir! :: transfer-f out in passes state in-start in-count out-start ->
+sp-cheap-filter :: type out in cutoff passes state #:q-factor #:in-start #:in-count #:out-start #:unity-gain ->
+sp-filter :: out in cutoff-l cutoff-h transition-l transition-h is-reject state ->
+sp-multipass :: f out in passes state in-start in-count out-start ->
+sp-multipass-fir :: transfer-f out in passes state in-start in-count out-start ->
 sp-one-pole-hp :: out in cutoff passes state in-start in-count out-start ->
 sp-one-pole-lp :: out in cutoff passes state in-start in-count out-start ->
-sp-state-variable-filter! :: type out in cutoff q-factor state in-start in-count out-start ->
-sp-windowed-sinc-bp-br :: in cutoff-l cutoff-h transition-l transition-h is-reject state ->
-sp-windowed-sinc-lp-hp :: in cutoff transition is-high-pass state ->
 ~~~
 
 ## (sph sp vectorise)
