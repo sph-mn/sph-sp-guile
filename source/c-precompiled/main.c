@@ -1,5 +1,117 @@
-#include "./helper.c"
+#include <libguile.h>
+#include <sph-sp.h>
+#include "./foreign/sph/helper.c"
+#include "./foreign/sph/guile.c"
+#include "./config.c"
 #include "./foreign/sph/float.c"
+#define status_group_sp_guile "sp-guile"
+#define scm_from_sp_file(pointer) scm_make_foreign_object_1(scm_type_file, pointer)
+#define scm_from_sp_convolution_filter_state(pointer) scm_make_foreign_object_1(scm_type_convolution_filter_state, pointer)
+#define scm_from_sp_path(pointer) scm_make_foreign_object_1(scm_type_sp_path, pointer)
+#define scm_to_sp_file(a) ((sp_file_t*)(scm_foreign_object_ref(a, 0)))
+#define scm_to_sp_convolution_filter_state(a) ((sp_convolution_filter_state_t*)(scm_foreign_object_ref(a, 0)))
+#define scm_to_sp_path(a) *((sp_path_t*)(scm_foreign_object_ref(a, 0)))
+/** gives a pointer to the memory region */
+#define scm_to_sp_samples(a) ((sp_sample_t*)(SCM_BYTEVECTOR_CONTENTS(a)))
+#define scm_to_sp_samples_length(a) sp_octets_to_samples((SCM_BYTEVECTOR_LENGTH(a)))
+#define scm_to_sp_sample_counts(a) ((sp_sample_count_t*)(SCM_BYTEVECTOR_CONTENTS(a)))
+#define scm_samples_p scm_is_bytevector
+/** defines scm-sp-sine!, scm-sp-sine-lq! */
+#define define_sp_sine_x(scm_id, f) \
+  SCM scm_id(SCM scm_data, SCM scm_len, SCM scm_sample_duration, SCM scm_freq, SCM scm_phase, SCM scm_amp) { \
+    f((scm_to_sp_sample_count(scm_len)), (scm_to_sp_float(scm_sample_duration)), (scm_to_sp_float(scm_freq)), (scm_to_sp_float(scm_phase)), (scm_to_sp_float(scm_amp)), (scm_to_sp_samples(scm_data))); \
+    return (SCM_UNSPECIFIED); \
+  }
+#define scm_from_status_error(a) scm_c_error((a.group), (sp_guile_status_name(a)), (sp_guile_status_description(a)))
+#define scm_c_error(group, name, description) scm_call_1(scm_rnrs_raise, (scm_list_4((scm_from_latin1_symbol(group)), (scm_from_latin1_symbol(name)), (scm_cons((scm_from_latin1_symbol("description")), (scm_from_utf8_string(description)))), (scm_cons((scm_from_latin1_symbol("c-routine")), (scm_from_latin1_symbol(__FUNCTION__)))))))
+#define scm_from_status_return(result) return ((status_is_success ? result : scm_from_status_error(status)))
+#define scm_from_status_dynwind_end_return(result) \
+  if (status_is_success) { \
+    scm_dynwind_end(); \
+    return (result); \
+  } else { \
+    return ((scm_from_status_error(status))); \
+  }
+enum { sp_status_id_missing_argument,
+  sp_status_id_argument_size_insufficient };
+SCM scm_type_file;
+SCM scm_type_convolution_filter_state;
+SCM scm_symbol_line;
+SCM scm_symbol_bezier;
+SCM scm_symbol_move;
+SCM scm_symbol_constant;
+SCM scm_symbol_path;
+SCM scm_type_sp_path;
+SCM scm_rnrs_raise;
+/** get the description if available for a status */
+uint8_t* sp_guile_status_description(status_t a) {
+  char* b;
+  if (!strcmp(status_group_sp_guile, (a.group))) {
+    if (sp_status_id_missing_argument == a.id) {
+      b = "missing argument";
+    } else if (sp_status_id_argument_size_insufficient == a.id) {
+      b = "argument size insufficient";
+    } else {
+      b = "";
+    };
+  } else {
+    b = sp_status_description(a);
+  };
+  return (((uint8_t*)(b)));
+};
+/** get the name if available for a status */
+uint8_t* sp_guile_status_name(status_t a) {
+  char* b;
+  if (!strcmp(status_group_sp_guile, (a.group))) {
+    if (sp_status_id_missing_argument == a.id) {
+      b = "missing-argument";
+    } else if (sp_status_id_argument_size_insufficient == a.id) {
+      b = "argument-size-insufficient";
+    } else {
+      b = "unknown";
+    };
+  } else {
+    b = sp_status_name(a);
+  };
+  return (((uint8_t*)(b)));
+};
+/** (samples ...):channels ...:block integer output -> status-t
+  result is set to null if channel-data is empty */
+status_t scm_to_channel_data(SCM a, sp_channel_count_t* result_channel_count, sp_sample_t*** result_channel_data) {
+  status_declare;
+  sp_sample_t** channel_data;
+  sp_channel_count_t channel_count;
+  sp_channel_count_t i;
+  channel_count = scm_to_size_t((scm_length(a)));
+  if (!channel_count) {
+    *result_channel_data = 0;
+    *result_channel_count = 0;
+    goto exit;
+  };
+  status_require((sph_helper_calloc((channel_count * sizeof(sp_sample_t*)), (&channel_data))));
+  for (i = 0; (i < channel_count); i = (1 + i)) {
+    channel_data[i] = scm_to_sp_samples((scm_first(a)));
+    a = scm_tail(a);
+  };
+  *result_channel_data = channel_data;
+  *result_channel_count = channel_count;
+exit:
+  return (status);
+};
+/** get a guile scheme object for channel data sample arrays. returns a list of sample-vectors.
+  eventually frees given channel data.
+  all sample vectors must have equal length */
+SCM scm_c_take_channel_data(sp_sample_t** a, sp_channel_count_t channel_count, sp_sample_count_t sample_count) {
+  SCM scm_result;
+  scm_result = SCM_EOL;
+  /* sample vectors prepended in reverse order */
+  while (channel_count) {
+    channel_count = (channel_count - 1);
+    scm_result = scm_cons((scm_c_take_samples((a[channel_count]), sample_count)), scm_result);
+  };
+  free(a);
+  return (scm_result);
+};
 SCM scm_sp_file_channel_count(SCM scm_a) { return ((scm_from_sp_channel_count(((scm_to_sp_file(scm_a))->channel_count)))); };
 SCM scm_sp_file_sample_rate(SCM scm_a) { return ((scm_from_sp_sample_rate(((scm_to_sp_file(scm_a))->sample_rate)))); };
 SCM scm_sp_file_position_p(SCM scm_a) { return ((scm_from_bool((sp_file_bit_position & (scm_to_sp_file(scm_a))->flags)))); };
@@ -188,6 +300,9 @@ SCM scm_sp_file_open(SCM scm_path, SCM mode, SCM scm_channel_count, SCM scm_samp
   path = scm_to_locale_string(scm_path);
   scm_dynwind_free(path);
   file = scm_gc_malloc_pointerless((sizeof(sp_file_t)), "sp-file");
+  if (!file) {
+    status_set_both_goto(sp_status_group_sp, sp_status_id_memory);
+  };
   status_require((sp_file_open(path, (scm_to_uint8(mode)), (scm_is_undefined(scm_channel_count) ? 0 : scm_to_sp_channel_count(scm_channel_count)), (scm_is_undefined(scm_sample_rate) ? 0 : scm_to_sp_sample_rate(scm_sample_rate)), file)));
   scm_result = scm_from_sp_file(file);
 exit:
@@ -244,6 +359,9 @@ exit:
 };
 SCM scm_sp_window_blackman(SCM a, SCM width) { scm_from_sp_float((sp_window_blackman((scm_to_sp_float(a)), (scm_to_sp_sample_count(width))))); };
 void scm_sp_convolution_filter_state_finalize(SCM a) { sp_convolution_filter_state_free((scm_to_sp_convolution_filter_state(a))); };
+#define scm_to_sp_path_segment_count(a) scm_to_uint16(a)
+#define scm_to_sp_path_value(a) scm_to_double(a)
+void scm_sp_path_finalize(SCM a) { sp_path_free((scm_to_sp_path(a))); };
 /** start/end are indexes counted from 0 */
 SCM scm_sp_moving_average(SCM scm_out, SCM scm_in, SCM scm_prev, SCM scm_next, SCM scm_radius, SCM scm_in_start, SCM scm_in_count, SCM scm_out_start) {
   status_declare;
@@ -407,9 +525,15 @@ void sp_guile_init() {
   m = scm_c_resolve_module("sph sp");
   scm_rnrs_raise = scm_c_public_ref("rnrs exceptions", "raise");
   scm_symbol_data = scm_from_latin1_symbol("data");
+  scm_symbol_line = scm_from_latin1_symbol("line");
+  scm_symbol_bezier = scm_from_latin1_symbol("bezier");
+  scm_symbol_constant = scm_from_latin1_symbol("constant");
+  scm_symbol_move = scm_from_latin1_symbol("move");
+  scm_symbol_path = scm_from_latin1_symbol("path");
   type_slots = scm_list_1(scm_symbol_data);
   scm_type_file = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-file")), type_slots, 0);
   scm_type_convolution_filter_state = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-convolution-filter-state")), type_slots, scm_sp_convolution_filter_state_finalize);
+  scm_type_sp_path = scm_make_foreign_object_type((scm_from_latin1_symbol("sp-path")), type_slots, scm_sp_path_finalize);
   scm_c_module_define(m, "sp-file-mode-read", (scm_from_uint8(sp_file_mode_read)));
   scm_c_module_define(m, "sp-file-mode-write", (scm_from_uint8(sp_file_mode_write)));
   scm_c_module_define(m, "sp-file-mode-read-write", (scm_from_uint8(sp_file_mode_read_write)));

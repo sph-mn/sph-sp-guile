@@ -24,8 +24,7 @@ copy_submodules() {
   scl=submodules/sph-sc-lib/source/sc
   mkdir -p "$sc/foreign/sph" &&
   cp --update --target-directory="$sc/foreign" "$scl/sph.sc" &&
-  cp --update --target-directory="$sc/foreign/sph" \
-    "$scl/sph/helper.sc" "$scl/sph/guile.sc" "$scl/sph/float.sc"
+  cp --update --target-directory="$sc/foreign/sph" "$scl/sph/guile.sc" "$scl/sph/float.sc"
 }
 
 compile_sc() {

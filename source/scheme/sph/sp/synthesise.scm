@@ -407,7 +407,7 @@
   (define seq-events-end (l (a) (apply max (map seq-event-end a))))
 
   (define-syntax-rule (seq-event-f-arguments time time-end offset size start end c)
-    (let
+(let
       ( (e-time (if (< start time) (- time start) 0))
         (e-offset (if (> start time) (- start time) 0))
         (e-offset-right (if (> end time-end) 0 (- time-end end))))
@@ -478,7 +478,7 @@
                     results)
                   (tail rest)))))))))
 
-  (define* (seq time offset size output events)
+(define* (seq time offset size output events)
     "integer integer integer (samples:channel ...) seq-events -> seq-events
      like seq-parallel but each event is evaluated one after another and writes directly into output"
     (let ((time-end (+ time size)) (channels (length output)))
