@@ -1,13 +1,13 @@
 experimental guile scheme sound synthesis and processing toolset.
 
-status: compiles and tests pass on 2019-04-27 but developer focus is moving to [sph-sp](https://github.com/sph-mn/sph-sp) and sph-sp-guile might be reduced or not get updates
-
 * read/write samples from/to audio files
 * most features of [sph-sp](https://github.com/sph-mn/sph-sp)
   * filters and convolution that work on blocks of data series
   * fast fourier transform
   * file output
 * experimental utilities for sequencing, synthesis and analysis
+
+status: compiles and tests pass on 2019-04-27 but developer focus is moving to [sph-sp](https://github.com/sph-mn/sph-sp) and sph-sp-guile might be reduced or not get updates
 
 # dependencies
 * run-time
